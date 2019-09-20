@@ -101,6 +101,7 @@ func listTags(docker_registry string, image string, token string) []string {
 }
 
 func pullImage(image ImageToReplicate, creds Creds) error {
+	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag
 	ctx := context.Background()
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
@@ -117,12 +118,12 @@ func pullImage(image ImageToReplicate, creds Creds) error {
 			return err
 		}
 		authStr := base64.URLEncoding.EncodeToString(encodedJSON)
-		_, err = cli.ImagePull(ctx, image.SourceRegistry+"/"+image.SourceImage+":"+image.SourceTag, types.ImagePullOptions{RegistryAuth: authStr})
+		_, err = cli.ImagePull(ctx, sourceImage, types.ImagePullOptions{RegistryAuth: authStr})
 		if err != nil {
 			return err
 		}
 	} else {
-		_, err := cli.ImagePull(ctx, image.SourceRegistry+"/"+image.SourceImage+":"+image.SourceTag, types.ImagePullOptions{})
+		_, err := cli.ImagePull(ctx, sourceImage, types.ImagePullOptions{})
 		if err != nil {
 			return err
 		}
@@ -131,12 +132,18 @@ func pullImage(image ImageToReplicate, creds Creds) error {
 }
 
 func pushImage(image ImageToReplicate, creds Creds) error {
+	destinationImage := image.DestinationRegistry + "/" + image.DestinationImage + ":" + image.DestinationTag
+	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag
 	ctx := context.Background()
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		return err
 	}
 	cli.NegotiateAPIVersion(ctx)
+	err = cli.ImageTag(ctx, sourceImage, destinationImage)
+	if err != nil {
+		return err
+	}
 	if creds.DestinationUser != "" && creds.DestinationPassword != "" {
 		authConfig := types.AuthConfig{
 			Username: creds.DestinationUser,
@@ -147,12 +154,12 @@ func pushImage(image ImageToReplicate, creds Creds) error {
 			return err
 		}
 		authStr := base64.URLEncoding.EncodeToString(encodedJSON)
-		_, err = cli.ImagePush(ctx, image.DestinationImage+":"+image.DestinationTag, types.ImagePushOptions{RegistryAuth: authStr})
+		_, err = cli.ImagePush(ctx, destinationImage, types.ImagePushOptions{RegistryAuth: authStr})
 		if err != nil {
 			return err
 		}
 	} else {
-		_, err := cli.ImagePush(ctx, image.DestinationImage+":"+image.DestinationTag, types.ImagePushOptions{})
+		_, err := cli.ImagePush(ctx, destinationImage, types.ImagePushOptions{})
 		if err != nil {
 			return err
 		}
@@ -161,7 +168,9 @@ func pushImage(image ImageToReplicate, creds Creds) error {
 }
 
 func replicate(image ImageToReplicate, creds Creds) error {
-	fmt.Printf("%s/%s:%s -> %s/%s:%s\n", image.SourceRegistry, image.SourceImage, image.SourceTag, image.DestinationRegistry, image.DestinationImage, image.DestinationTag)
+	destinationImage := image.DestinationRegistry + "/" + image.DestinationImage + ":" + image.DestinationTag
+	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag
+	fmt.Printf("%s -> %s\n", sourceImage, destinationImage)
 	err := pullImage(image, creds)
 	if err != nil {
 		return err

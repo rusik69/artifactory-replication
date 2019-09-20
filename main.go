@@ -108,7 +108,7 @@ func pullImage(image ImageToReplicate, creds Creds) error {
 		return err
 	}
 	cli.NegotiateAPIVersion(ctx)
-	if creds.SourceUser != "" && creds.SourcePassword != "" {
+	if creds.SourceUser != "" || creds.SourcePassword != "" {
 		authConfig := types.AuthConfig{
 			Username: creds.SourceUser,
 			Password: creds.SourcePassword,
@@ -118,15 +118,17 @@ func pullImage(image ImageToReplicate, creds Creds) error {
 			return err
 		}
 		authStr := base64.URLEncoding.EncodeToString(encodedJSON)
-		_, err = cli.ImagePull(ctx, sourceImage, types.ImagePullOptions{RegistryAuth: authStr})
+		out, err := cli.ImagePull(ctx, sourceImage, types.ImagePullOptions{RegistryAuth: authStr})
 		if err != nil {
 			return err
 		}
+		defer out.Close()
 	} else {
-		_, err := cli.ImagePull(ctx, sourceImage, types.ImagePullOptions{})
+		out, err := cli.ImagePull(ctx, sourceImage, types.ImagePullOptions{})
 		if err != nil {
 			return err
 		}
+		defer out.Close()
 	}
 	return nil
 }
@@ -144,7 +146,7 @@ func pushImage(image ImageToReplicate, creds Creds) error {
 	if err != nil {
 		return err
 	}
-	if creds.DestinationUser != "" && creds.DestinationPassword != "" {
+	if creds.DestinationUser != "" || creds.DestinationPassword != "" {
 		authConfig := types.AuthConfig{
 			Username: creds.DestinationUser,
 			Password: creds.DestinationPassword,
@@ -154,17 +156,39 @@ func pushImage(image ImageToReplicate, creds Creds) error {
 			return err
 		}
 		authStr := base64.URLEncoding.EncodeToString(encodedJSON)
-		_, err = cli.ImagePush(ctx, destinationImage, types.ImagePushOptions{RegistryAuth: authStr})
+		out, err := cli.ImagePush(ctx, destinationImage, types.ImagePushOptions{RegistryAuth: authStr})
 		if err != nil {
 			return err
 		}
+		defer out.Close()
 	} else {
 		_, err := cli.ImagePush(ctx, destinationImage, types.ImagePushOptions{})
 		if err != nil {
 			return err
 		}
+		defer out.Close()
 	}
 	return nil
+}
+
+func removeLocalImage(image ImageToReplicate) error{
+	destinationImage := image.DestinationRegistry + "/" + image.DestinationImage + ":" + image.DestinationTag
+	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag
+	images := []string {sourceImage, destinationImage}
+	ctx := context.Background()
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		return err
+	}
+	cli.NegotiateAPIVersion(ctx)
+	for _, imageName := range images {
+		img, err := cli.ImageInspectWithRaw()
+		if err != nil{
+			return err
+		}
+		id := img.ID
+
+	}
 }
 
 func replicate(image ImageToReplicate, creds Creds) error {

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"io"
 )
 
 type Creds struct {
@@ -29,15 +30,15 @@ type ImageToReplicate struct {
 	DestinationTag      string
 }
 
-func GetToken(docker_registry string) string {
+func GetToken(docker_registry string) (string, error) {
 	resp, err := http.Get("https://" + docker_registry + "/artifactory/api/docker/docker-prod-local/v2/token")
 	if err != nil {
-		panic(err)
+		return "", err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		panic(err)
+		return "", err
 	}
 	type res struct {
 		Token string
@@ -46,9 +47,9 @@ func GetToken(docker_registry string) string {
 	var b res
 	err = json.Unmarshal(body, &b)
 	if err != nil {
-		panic(err)
+		return "", err
 	}
-	return (b.Token)
+	return string(b.Token), nil
 }
 
 func GetRepos(docker_registry string, token string) []string {
@@ -122,12 +123,14 @@ func pullImage(image ImageToReplicate, creds Creds) error {
 		if err != nil {
 			return err
 		}
+		io.Copy(ioutil.Discard, out)
 		defer out.Close()
 	} else {
 		out, err := cli.ImagePull(ctx, sourceImage, types.ImagePullOptions{})
 		if err != nil {
 			return err
 		}
+		io.Copy(ioutil.Discard, out)
 		defer out.Close()
 	}
 	return nil
@@ -160,38 +163,20 @@ func pushImage(image ImageToReplicate, creds Creds) error {
 		if err != nil {
 			return err
 		}
+		io.Copy(ioutil.Discard, out)
 		defer out.Close()
 	} else {
-		_, err := cli.ImagePush(ctx, destinationImage, types.ImagePushOptions{})
+		out, err := cli.ImagePush(ctx, destinationImage, types.ImagePushOptions{})
 		if err != nil {
 			return err
 		}
+		io.Copy(ioutil.Discard, out)
 		defer out.Close()
 	}
 	return nil
 }
 
-func removeLocalImage(image ImageToReplicate) error{
-	destinationImage := image.DestinationRegistry + "/" + image.DestinationImage + ":" + image.DestinationTag
-	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag
-	images := []string {sourceImage, destinationImage}
-	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		return err
-	}
-	cli.NegotiateAPIVersion(ctx)
-	for _, imageName := range images {
-		img, err := cli.ImageInspectWithRaw()
-		if err != nil{
-			return err
-		}
-		id := img.ID
-
-	}
-}
-
-func replicate(image ImageToReplicate, creds Creds) error {
+func replicate(image ImageToReplicate, creds Creds, token string) error {
 	destinationImage := image.DestinationRegistry + "/" + image.DestinationImage + ":" + image.DestinationTag
 	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag
 	fmt.Printf("%s -> %s\n", sourceImage, destinationImage)
@@ -222,8 +207,14 @@ func main() {
 		DestinationPassword: os.Getenv("DESTINATION_PASSWORD"),
 	}
 	imageFilter := os.Getenv("IMAGE_FILTER")
-	token := GetToken(sourceRegistry)
+	token, err := GetToken(sourceRegistry)
+	if err != nil{
+		panic(err)
+	}
 	repos := GetRepos(sourceRegistry, token)
+	if err != nil{
+		panic(err)
+	}
 	resultRepos := repos[:0]
 	if imageFilter != "" {
 		for _, repo := range repos {
@@ -244,7 +235,7 @@ func main() {
 				SourceTag:           tag,
 				DestinationTag:      tag,
 			}
-			err := replicate(image, creds)
+			err := replicate(image, creds, token)
 			if err != nil {
 				panic(err)
 			}

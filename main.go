@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
-	"io"
 )
 
 type Creds struct {
@@ -176,7 +177,12 @@ func pushImage(image ImageToReplicate, creds Creds) error {
 	return nil
 }
 
-func replicate(image ImageToReplicate, creds Creds, token string) error {
+func deleteImage(imageName string) error {
+	_, err := exec.Command("docker rm " + imageName).Output()
+	return err
+}
+
+func replicate(image ImageToReplicate, creds Creds) error {
 	destinationImage := image.DestinationRegistry + "/" + image.DestinationImage + ":" + image.DestinationTag
 	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag
 	fmt.Printf("%s -> %s\n", sourceImage, destinationImage)
@@ -185,6 +191,14 @@ func replicate(image ImageToReplicate, creds Creds, token string) error {
 		return err
 	}
 	err = pushImage(image, creds)
+	if err != nil {
+		return err
+	}
+	err = deleteImage(image.SourceImage)
+	if err != nil {
+		return err
+	}
+	err = deleteImage(image.DestinationImage)
 	if err != nil {
 		return err
 	}
@@ -208,11 +222,11 @@ func main() {
 	}
 	imageFilter := os.Getenv("IMAGE_FILTER")
 	token, err := GetToken(sourceRegistry)
-	if err != nil{
+	if err != nil {
 		panic(err)
 	}
 	repos := GetRepos(sourceRegistry, token)
-	if err != nil{
+	if err != nil {
 		panic(err)
 	}
 	resultRepos := repos[:0]
@@ -235,7 +249,7 @@ func main() {
 				SourceTag:           tag,
 				DestinationTag:      tag,
 			}
-			err := replicate(image, creds, token)
+			err := replicate(image, creds)
 			if err != nil {
 				panic(err)
 			}

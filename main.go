@@ -11,7 +11,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"os/exec"
 	"strings"
 )
 
@@ -53,18 +52,18 @@ func GetToken(docker_registry string) (string, error) {
 	return string(b.Token), nil
 }
 
-func GetRepos(docker_registry string, token string) []string {
+func GetRepos(docker_registry string, token string) ([]string, error) {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", "https://"+docker_registry+"/v2/_catalog", nil)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	req.Header.Add("Authorization", "Bearer "+token)
 	resp, err := client.Do(req)
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	type res struct {
 		Repositories []string
@@ -72,23 +71,23 @@ func GetRepos(docker_registry string, token string) []string {
 	var b res
 	err = json.Unmarshal(body, &b)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return b.Repositories
+	return b.Repositories, nil
 }
 
-func listTags(docker_registry string, image string, token string) []string {
+func listTags(docker_registry string, image string, token string) ([]string, error) {
 	httpClient := &http.Client{}
 	req, err := http.NewRequest("GET", "https://"+docker_registry+"/v2/"+image+"/tags/list", nil)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	req.Header.Add("Authorization", "Bearer "+token)
 	resp, err := httpClient.Do(req)
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	type res struct {
 		Name string
@@ -97,9 +96,9 @@ func listTags(docker_registry string, image string, token string) []string {
 	var b res
 	err = json.Unmarshal(body, &b)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return b.Tags
+	return b.Tags, nil
 }
 
 func pullImage(image ImageToReplicate, creds Creds) error {
@@ -178,7 +177,26 @@ func pushImage(image ImageToReplicate, creds Creds) error {
 }
 
 func deleteImage(imageName string) error {
-	_, err := exec.Command("docker rm " + imageName).Output()
+	ctx := context.Background()
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		return err
+	}
+	cli.NegotiateAPIVersion(ctx)
+	il, err := cli.ImageList(ctx, types.ImageListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, image := range il {
+		for _, tag := range image.RepoTags {
+			if tag == imageName{
+				_, err := cli.ImageRemove(ctx, image.ID, types.ImageRemoveOptions{Force: true})
+				if err != nil{
+					return err
+				}
+			}
+		}
+	}
 	return err
 }
 
@@ -194,11 +212,11 @@ func replicate(image ImageToReplicate, creds Creds) error {
 	if err != nil {
 		return err
 	}
-	err = deleteImage(image.SourceImage)
+	err = deleteImage(sourceImage)
 	if err != nil {
 		return err
 	}
-	err = deleteImage(image.DestinationImage)
+	err = deleteImage(destinationImage)
 	if err != nil {
 		return err
 	}
@@ -225,7 +243,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	repos := GetRepos(sourceRegistry, token)
+	repos, err := GetRepos(sourceRegistry, token)
 	if err != nil {
 		panic(err)
 	}
@@ -240,7 +258,11 @@ func main() {
 		resultRepos = repos
 	}
 	for _, repo := range resultRepos {
-		for _, tag := range listTags(sourceRegistry, repo, token) {
+		tags, err := listTags(sourceRegistry, repo, token)
+		if err != nil {
+			panic(err)
+		}
+		for _, tag := range tags {
 			image := ImageToReplicate{
 				SourceRegistry:      sourceRegistry,
 				SourceImage:         repo,

@@ -58,7 +58,9 @@ func GetRepos(docker_registry string, token string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Add("Authorization", "Bearer "+token)
+	if token != "" {
+		req.Header.Add("Authorization", "Bearer "+token)
+	}
 	resp, err := client.Do(req)
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
@@ -82,7 +84,9 @@ func listTags(docker_registry string, image string, token string) ([]string, err
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Add("Authorization", "Bearer "+token)
+	if token != "" {
+		req.Header.Add("Authorization", "Bearer "+token)
+	}
 	resp, err := httpClient.Do(req)
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
@@ -170,7 +174,6 @@ func pushImage(image ImageToReplicate, creds Creds) error {
 		if err != nil {
 			return err
 		}
-		io.Copy(ioutil.Discard, out)
 		defer out.Close()
 	}
 	return nil
@@ -189,9 +192,9 @@ func deleteImage(imageName string) error {
 	}
 	for _, image := range il {
 		for _, tag := range image.RepoTags {
-			if tag == imageName{
+			if tag == imageName {
 				_, err := cli.ImageRemove(ctx, image.ID, types.ImageRemoveOptions{Force: true})
-				if err != nil{
+				if err != nil {
 					return err
 				}
 			}
@@ -239,41 +242,84 @@ func main() {
 		DestinationPassword: os.Getenv("DESTINATION_PASSWORD"),
 	}
 	imageFilter := os.Getenv("IMAGE_FILTER")
-	token, err := GetToken(sourceRegistry)
+	sourceToken, err := GetToken(sourceRegistry)
 	if err != nil {
 		panic(err)
 	}
-	repos, err := GetRepos(sourceRegistry, token)
+	sourceRepos, err := GetRepos(sourceRegistry, sourceToken)
 	if err != nil {
 		panic(err)
 	}
-	resultRepos := repos[:0]
+	destinationRepos, err := GetRepos(destinationRegistry, "")
+	if err != nil {
+		panic(err)
+	}
+	sourceFilteredRepos := sourceRepos[:0]
 	if imageFilter != "" {
-		for _, repo := range repos {
+		for _, repo := range sourceRepos {
 			if strings.HasPrefix(repo, imageFilter) {
-				resultRepos = append(resultRepos, repo)
+				sourceFilteredRepos = append(sourceFilteredRepos, repo)
 			}
 		}
 	} else {
-		resultRepos = repos
+		sourceFilteredRepos = sourceRepos
 	}
-	for _, repo := range resultRepos {
-		tags, err := listTags(sourceRegistry, repo, token)
+	destinationFilteredRepos := destinationRepos[:0]
+	if imageFilter != "" {
+		for _, repo := range destinationRepos {
+			if strings.HasPrefix(repo, imageFilter) {
+				destinationFilteredRepos = append(destinationFilteredRepos, repo)
+			}
+		}
+	} else {
+		destinationFilteredRepos = destinationRepos
+	}
+	for _, sourceRepo := range sourceFilteredRepos {
+		sourceTags, err := listTags(sourceRegistry, sourceRepo, sourceToken)
 		if err != nil {
 			panic(err)
 		}
-		for _, tag := range tags {
+		repoFound := false
+		for _, destinationRepo := range destinationFilteredRepos {
+			if sourceRepo == destinationRepo {
+				repoFound = true
+				break
+			}
+		}
+		for _, sourceTag := range sourceTags {
 			image := ImageToReplicate{
 				SourceRegistry:      sourceRegistry,
-				SourceImage:         repo,
+				SourceImage:         sourceRepo,
 				DestinationRegistry: destinationRegistry,
-				DestinationImage:    repo,
-				SourceTag:           tag,
-				DestinationTag:      tag,
+				DestinationImage:    sourceRepo,
+				SourceTag:           sourceTag,
+				DestinationTag:      sourceTag,
 			}
-			err := replicate(image, creds)
-			if err != nil {
-				panic(err)
+			if !repoFound {
+				err := replicate(image, creds)
+				if err != nil {
+					panic(err)
+				}
+			} else {
+				destinationTagFound := false
+				destinationTags, err := listTags(destinationRegistry, sourceRepo, "")
+				if err != nil {
+					panic(err)
+				}
+				for _, destinationTag := range destinationTags {
+					if sourceTag == destinationTag {
+						destinationTagFound = true
+						break
+					}
+				}
+				if destinationTagFound {
+					continue
+				} else {
+					err = replicate(image, creds)
+					if err != nil {
+						panic(err)
+					}
+				}
 			}
 		}
 	}

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"bytes"
 )
 
 type Creds struct {
@@ -30,22 +31,43 @@ type ImageToReplicate struct {
 	DestinationTag      string
 }
 
-func GetToken(docker_registry string) (string, error) {
-	resp, err := http.Get("https://" + docker_registry + "/artifactory/api/docker/docker-prod-local/v2/token")
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
+func GetToken(docker_registry string, user string, password string) (string, error) {
+	url := "https://" + docker_registry + "/artifactory/api/docker/docker-prod-local/v2/token"
+	var body []byte
+	if user == "" || password == "" {
+		resp, err := http.Get(url)
+		if err != nil {
+			return "", err
+		}
+		body, err = ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return "", err
+		}
+	} else {
+		type creds struct {
+			username string
+			password  string
+		}
+		credsJson := creds{user, password}
+		credsString, err := json.Marshal(credsJson)
+		if err != nil{
+			return "", err
+		}
+		resp, err := http.Post(url,"application/json", bytes.NewBuffer(credsString))
+		if err != nil{
+			return "", err
+		}
+		body, err = ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return "", err
+		}
 	}
 	type res struct {
 		Token string
 		TTL   uint64
 	}
 	var b res
-	err = json.Unmarshal(body, &b)
+	err := json.Unmarshal(body, &b)
 	if err != nil {
 		return "", err
 	}
@@ -64,6 +86,7 @@ func GetRepos(docker_registry string, token string) ([]string, error) {
 	resp, err := client.Do(req)
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
+	fmt.Println(string(body))
 	if err != nil {
 		return nil, err
 	}
@@ -204,6 +227,7 @@ func deleteImage(imageName string) error {
 }
 
 func replicate(image ImageToReplicate, creds Creds) error {
+	fmt.Println(8)
 	destinationImage := image.DestinationRegistry + "/" + image.DestinationImage + ":" + image.DestinationTag
 	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag
 	fmt.Printf("%s -> %s\n", sourceImage, destinationImage)
@@ -211,18 +235,22 @@ func replicate(image ImageToReplicate, creds Creds) error {
 	if err != nil {
 		return err
 	}
+	fmt.Println(9)
 	err = pushImage(image, creds)
 	if err != nil {
 		return err
 	}
+	fmt.Println(10)
 	err = deleteImage(sourceImage)
 	if err != nil {
 		return err
 	}
+	fmt.Println(11)
 	err = deleteImage(destinationImage)
 	if err != nil {
 		return err
 	}
+	fmt.Println(12)
 	return nil
 }
 
@@ -242,7 +270,11 @@ func main() {
 		DestinationPassword: os.Getenv("DESTINATION_PASSWORD"),
 	}
 	imageFilter := os.Getenv("IMAGE_FILTER")
-	sourceToken, err := GetToken(sourceRegistry)
+	sourceToken, err := GetToken(sourceRegistry, creds.SourceUser, creds.DestinationUser)
+	if err != nil {
+		panic(err)
+	}
+	destinationToken, err := GetToken(sourceRegistry, creds.DestinationUser, creds.DestinationPassword)
 	if err != nil {
 		panic(err)
 	}
@@ -250,7 +282,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	destinationRepos, err := GetRepos(destinationRegistry, "")
+	destinationRepos, err := GetRepos(destinationRegistry, destinationToken)
 	if err != nil {
 		panic(err)
 	}
@@ -275,18 +307,23 @@ func main() {
 		destinationFilteredRepos = destinationRepos
 	}
 	for _, sourceRepo := range sourceFilteredRepos {
+		fmt.Println(1)
 		sourceTags, err := listTags(sourceRegistry, sourceRepo, sourceToken)
 		if err != nil {
 			panic(err)
 		}
 		repoFound := false
 		for _, destinationRepo := range destinationFilteredRepos {
+			fmt.Println(sourceRepo)
+			fmt.Println(destinationRepo)
 			if sourceRepo == destinationRepo {
 				repoFound = true
 				break
 			}
 		}
+		fmt.Println(2)
 		for _, sourceTag := range sourceTags {
+			fmt.Println(3)
 			image := ImageToReplicate{
 				SourceRegistry:      sourceRegistry,
 				SourceImage:         sourceRepo,
@@ -296,17 +333,20 @@ func main() {
 				DestinationTag:      sourceTag,
 			}
 			if !repoFound {
+				fmt.Println(4)
 				err := replicate(image, creds)
 				if err != nil {
 					panic(err)
 				}
 			} else {
+				fmt.Println(5)
 				destinationTagFound := false
-				destinationTags, err := listTags(destinationRegistry, sourceRepo, "")
+				destinationTags, err := listTags(destinationRegistry, sourceRepo, destinationToken)
 				if err != nil {
 					panic(err)
 				}
 				for _, destinationTag := range destinationTags {
+					fmt.Println(6)
 					if sourceTag == destinationTag {
 						destinationTagFound = true
 						break
@@ -315,6 +355,7 @@ func main() {
 				if destinationTagFound {
 					continue
 				} else {
+					fmt.Println(7)
 					err = replicate(image, creds)
 					if err != nil {
 						panic(err)

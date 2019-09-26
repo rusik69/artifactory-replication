@@ -36,7 +36,7 @@ func GetToken(docker_registry string, user string, password string, registryType
 	var url string
 	if registryType == "artifactory"{
 		url = "https://" + docker_registry + "/artifactory/api/docker/docker-prod-local/v2/token"
-	} else if registryType=="registry" {
+	} else if registryType=="docker" {
 		url = "https://" + docker_registry + "/v2/token"
 	} else {
 		return "", errors.New("unknown registry type: " + registryType)
@@ -69,7 +69,6 @@ func GetToken(docker_registry string, user string, password string, registryType
 		if err != nil {
 			return "", err
 		}
-		fmt.Println(string(body))
 	}
 	type res struct {
 		Token string
@@ -262,9 +261,17 @@ func main() {
 	if sourceRegistry == "" {
 		panic("empty SOURCE_REGISTRY env variable")
 	}
+	sourceRegistryType := os.Getenv("SOURCE_REGISTRY_TYPE")
+	if sourceRegistryType == "" {
+		panic("empty SOURCE_REGISTRY_TYPE env variable")
+	}
 	destinationRegistry := os.Getenv("DESTINATION_REGISTRY")
 	if destinationRegistry == "" {
 		panic("empty DESTINATION_REGISTRY env variable")
+	}
+	destinationRegistryType := os.Getenv("DESTINATION_REGISTRY_TYPE")
+	if destinationRegistryType == "" {
+		panic("empty DESTINATION_REGISTRY_TYPE env variable")
 	}
 	creds := Creds{
 		SourceUser:          os.Getenv("SOURCE_USER"),
@@ -273,11 +280,11 @@ func main() {
 		DestinationPassword: os.Getenv("DESTINATION_PASSWORD"),
 	}
 	imageFilter := os.Getenv("IMAGE_FILTER")
-	sourceToken, err := GetToken(sourceRegistry, creds.SourceUser, creds.DestinationUser, "artifactory")
+	sourceToken, err := GetToken(sourceRegistry, creds.SourceUser, creds.SourcePassword, sourceRegistryType)
 	if err != nil {
 		panic(err)
 	}
-	destinationToken, err := GetToken(sourceRegistry, creds.DestinationUser, creds.DestinationPassword, "registry")
+	destinationToken, err := GetToken(sourceRegistry, creds.DestinationUser, creds.DestinationPassword, destinationRegistryType)
 	if err != nil {
 		panic(err)
 	}
@@ -286,10 +293,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	destinationRepos, err := GetRepos(destinationRegistry, destinationToken)
+	/*destinationRepos, err := GetRepos(destinationRegistry, destinationToken)
 	if err != nil {
 		panic(err)
-	}
+	}*/
 	sourceFilteredRepos := sourceRepos[:0]
 	if imageFilter != "" {
 		for _, repo := range sourceRepos {
@@ -300,7 +307,7 @@ func main() {
 	} else {
 		sourceFilteredRepos = sourceRepos
 	}
-	destinationFilteredRepos := destinationRepos[:0]
+	/*destinationFilteredRepos := destinationRepos[:0]
 	if imageFilter != "" {
 		for _, repo := range destinationRepos {
 			if strings.HasPrefix(repo, imageFilter) {
@@ -309,19 +316,19 @@ func main() {
 		}
 	} else {
 		destinationFilteredRepos = destinationRepos
-	}
+	}*/
 	for _, sourceRepo := range sourceFilteredRepos {
 		sourceTags, err := listTags(sourceRegistry, sourceRepo, sourceToken)
 		if err != nil {
 			panic(err)
 		}
-		repoFound := false
+		/*repoFound := false
 		for _, destinationRepo := range destinationFilteredRepos {
 			if sourceRepo == destinationRepo {
 				repoFound = true
 				break
 			}
-		}
+		}*/
 		for _, sourceTag := range sourceTags {
 			image := ImageToReplicate{
 				SourceRegistry:      sourceRegistry,
@@ -331,7 +338,11 @@ func main() {
 				SourceTag:           sourceTag,
 				DestinationTag:      sourceTag,
 			}
-			if !repoFound {
+			err := replicate(image, creds)
+			if err != nil {
+				panic(err)
+			}
+			/*if !repoFound {
 				err := replicate(image, creds)
 				if err != nil {
 					panic(err)
@@ -356,7 +367,7 @@ func main() {
 						panic(err)
 					}
 				}
-			}
+			}*/
 		}
 	}
 }

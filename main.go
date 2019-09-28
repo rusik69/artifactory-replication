@@ -82,6 +82,7 @@ func listTags(docker_registry string, image string, user string, pass string) ([
 
 func pullImage(image ImageToReplicate, creds Creds) error {
 	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag
+	fmt.Println("Pulling " + sourceImage)
 	ctx := context.Background()
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
@@ -117,6 +118,7 @@ func pullImage(image ImageToReplicate, creds Creds) error {
 
 func pushImage(image ImageToReplicate, creds Creds) error {
 	destinationImage := image.DestinationRegistry + "/" + image.DestinationImage + ":" + image.DestinationTag
+	fmt.Println("Pushing " + destinationImage)
 	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag
 	ctx := context.Background()
 	cli, err := client.NewClientWithOpts(client.FromEnv)
@@ -155,6 +157,7 @@ func pushImage(image ImageToReplicate, creds Creds) error {
 }
 
 func deleteImage(imageName string) error {
+	fmt.Println("Deleting " + imageName)
 	ctx := context.Background()
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
@@ -265,10 +268,6 @@ func main() {
 				DestinationImage:    sourceRepo,
 				SourceTag:           sourceTag,
 				DestinationTag:      sourceTag,
-			}
-			err := replicate(image, creds)
-			if err != nil {
-				panic(err)
 			}
 			if !repoFound {
 				err := replicate(image, creds)

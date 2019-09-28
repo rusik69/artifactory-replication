@@ -12,8 +12,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"bytes"
-	"errors"
 )
 
 type Creds struct {
@@ -32,65 +30,14 @@ type ImageToReplicate struct {
 	DestinationTag      string
 }
 
-func GetToken(docker_registry string, user string, password string, registryType string) (string, error) {
-	var url string
-	if registryType == "artifactory"{
-		url = "https://" + docker_registry + "/artifactory/api/docker/docker-prod-local/v2/token"
-	} else if registryType=="docker" {
-		url = "https://" + docker_registry + "/v2/token"
-	} else {
-		return "", errors.New("unknown registry type: " + registryType)
-	}
-	var body []byte
-	if user == "" && password == "" {
-		resp, err := http.Get(url)
-		if err != nil {
-			return "", err
-		}
-		body, err = ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return "", err
-		}
-	} else {
-		type creds struct {
-			username string
-			password  string
-		}
-		credsJson := creds{user, password}
-		credsString, err := json.Marshal(credsJson)
-		if err != nil{
-			return "", err
-		}
-		resp, err := http.Post(url,"application/json", bytes.NewBuffer(credsString))
-		if err != nil{
-			return "", err
-		}
-		body, err = ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return "", err
-		}
-	}
-	type res struct {
-		Token string
-		TTL   uint64
-	}
-	var b res
-	err := json.Unmarshal(body, &b)
-	if err != nil {
-		return "", err
-	}
-	return string(b.Token), nil
-}
 
-func GetRepos(docker_registry string, token string) ([]string, error) {
+func GetRepos(docker_registry string, token string, user string, pass string) ([]string, error) {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", "https://"+docker_registry+"/v2/_catalog", nil)
 	if err != nil {
 		return nil, err
 	}
-	if token != "" {
-		req.Header.Add("Authorization", "Bearer "+token)
-	}
+	req.SetBasicAuth(user, pass)
 	resp, err := client.Do(req)
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
@@ -108,15 +55,13 @@ func GetRepos(docker_registry string, token string) ([]string, error) {
 	return b.Repositories, nil
 }
 
-func listTags(docker_registry string, image string, token string) ([]string, error) {
+func listTags(docker_registry string, image string, user string, pass string) ([]string, error) {
 	httpClient := &http.Client{}
 	req, err := http.NewRequest("GET", "https://"+docker_registry+"/v2/"+image+"/tags/list", nil)
 	if err != nil {
 		return nil, err
 	}
-	if token != "" {
-		req.Header.Add("Authorization", "Bearer "+token)
-	}
+	req.SetBasicAuth(user, pass)
 	resp, err := httpClient.Do(req)
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
@@ -261,17 +206,9 @@ func main() {
 	if sourceRegistry == "" {
 		panic("empty SOURCE_REGISTRY env variable")
 	}
-	sourceRegistryType := os.Getenv("SOURCE_REGISTRY_TYPE")
-	if sourceRegistryType == "" {
-		panic("empty SOURCE_REGISTRY_TYPE env variable")
-	}
 	destinationRegistry := os.Getenv("DESTINATION_REGISTRY")
 	if destinationRegistry == "" {
 		panic("empty DESTINATION_REGISTRY env variable")
-	}
-	destinationRegistryType := os.Getenv("DESTINATION_REGISTRY_TYPE")
-	if destinationRegistryType == "" {
-		panic("empty DESTINATION_REGISTRY_TYPE env variable")
 	}
 	creds := Creds{
 		SourceUser:          os.Getenv("SOURCE_USER"),
@@ -280,23 +217,14 @@ func main() {
 		DestinationPassword: os.Getenv("DESTINATION_PASSWORD"),
 	}
 	imageFilter := os.Getenv("IMAGE_FILTER")
-	sourceToken, err := GetToken(sourceRegistry, creds.SourceUser, creds.SourcePassword, sourceRegistryType)
+	sourceRepos, err := GetRepos(sourceRegistry, "", creds.SourceUser, creds.SourcePassword)
 	if err != nil {
 		panic(err)
 	}
-	destinationToken, err := GetToken(destinationRegistry, creds.DestinationUser, creds.DestinationPassword, destinationRegistryType)
+	destinationRepos, err := GetRepos(destinationRegistry, "", creds.DestinationUser, creds.DestinationPassword)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(destinationToken)
-	sourceRepos, err := GetRepos(sourceRegistry, sourceToken)
-	if err != nil {
-		panic(err)
-	}
-	/*destinationRepos, err := GetRepos(destinationRegistry, destinationToken)
-	if err != nil {
-		panic(err)
-	}*/
 	sourceFilteredRepos := sourceRepos[:0]
 	if imageFilter != "" {
 		for _, repo := range sourceRepos {
@@ -307,7 +235,7 @@ func main() {
 	} else {
 		sourceFilteredRepos = sourceRepos
 	}
-	/*destinationFilteredRepos := destinationRepos[:0]
+	destinationFilteredRepos := destinationRepos[:0]
 	if imageFilter != "" {
 		for _, repo := range destinationRepos {
 			if strings.HasPrefix(repo, imageFilter) {
@@ -316,19 +244,19 @@ func main() {
 		}
 	} else {
 		destinationFilteredRepos = destinationRepos
-	}*/
+	}
 	for _, sourceRepo := range sourceFilteredRepos {
-		sourceTags, err := listTags(sourceRegistry, sourceRepo, sourceToken)
+		sourceTags, err := listTags(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)
 		if err != nil {
 			panic(err)
 		}
-		/*repoFound := false
+		repoFound := false
 		for _, destinationRepo := range destinationFilteredRepos {
 			if sourceRepo == destinationRepo {
 				repoFound = true
 				break
 			}
-		}*/
+		}
 		for _, sourceTag := range sourceTags {
 			image := ImageToReplicate{
 				SourceRegistry:      sourceRegistry,
@@ -342,14 +270,14 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
-			/*if !repoFound {
+			if !repoFound {
 				err := replicate(image, creds)
 				if err != nil {
 					panic(err)
 				}
 			} else {
 				destinationTagFound := false
-				destinationTags, err := listTags(destinationRegistry, sourceRepo, destinationToken)
+				destinationTags, err := listTags(destinationRegistry, sourceRepo, creds.DestinationUser, creds.DestinationPassword)
 				if err != nil {
 					panic(err)
 				}
@@ -367,7 +295,7 @@ func main() {
 						panic(err)
 					}
 				}
-			}*/
+			}
 		}
 	}
 }

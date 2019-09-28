@@ -284,7 +284,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	destinationToken, err := GetToken(sourceRegistry, creds.DestinationUser, creds.DestinationPassword, destinationRegistryType)
+	destinationToken, err := GetToken(destinationRegistry, creds.DestinationUser, creds.DestinationPassword, destinationRegistryType)
 	if err != nil {
 		panic(err)
 	}

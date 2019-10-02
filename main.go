@@ -284,6 +284,10 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	}
 }
 
+func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, imageFilter string){
+
+}
+
 func main() {
 	sourceRegistry := os.Getenv("SOURCE_REGISTRY")
 	if sourceRegistry == "" {
@@ -305,5 +309,7 @@ func main() {
 		replicateDocker(creds, sourceRegistry, destinationRegistry, imageFilter)
 	} else if artifactType == "binary" {
 		replicateBinary(creds, sourceRegistry, destinationRegistry, imageFilter)
+	} else {
+		panic("unknown or empty ARTIFACT_TYPE")
 	}
 }

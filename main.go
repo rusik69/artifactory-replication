@@ -204,22 +204,7 @@ func replicate(image ImageToReplicate, creds Creds) error {
 	return nil
 }
 
-func main() {
-	sourceRegistry := os.Getenv("SOURCE_REGISTRY")
-	if sourceRegistry == "" {
-		panic("empty SOURCE_REGISTRY env variable")
-	}
-	destinationRegistry := os.Getenv("DESTINATION_REGISTRY")
-	if destinationRegistry == "" {
-		panic("empty DESTINATION_REGISTRY env variable")
-	}
-	creds := Creds{
-		SourceUser:          os.Getenv("SOURCE_USER"),
-		SourcePassword:      os.Getenv("SOURCE_PASSWORD"),
-		DestinationUser:     os.Getenv("DESTINATION_USER"),
-		DestinationPassword: os.Getenv("DESTINATION_PASSWORD"),
-	}
-	imageFilter := os.Getenv("IMAGE_FILTER")
+func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry string, imageFilter string){
 	sourceRepos, err := GetRepos(sourceRegistry, "", creds.SourceUser, creds.SourcePassword)
 	if err != nil {
 		panic(err)
@@ -296,5 +281,29 @@ func main() {
 				}
 			}
 		}
+	}
+}
+
+func main() {
+	sourceRegistry := os.Getenv("SOURCE_REGISTRY")
+	if sourceRegistry == "" {
+		panic("empty SOURCE_REGISTRY env variable")
+	}
+	destinationRegistry := os.Getenv("DESTINATION_REGISTRY")
+	if destinationRegistry == "" {
+		panic("empty DESTINATION_REGISTRY env variable")
+	}
+	creds := Creds{
+		SourceUser:          os.Getenv("SOURCE_USER"),
+		SourcePassword:      os.Getenv("SOURCE_PASSWORD"),
+		DestinationUser:     os.Getenv("DESTINATION_USER"),
+		DestinationPassword: os.Getenv("DESTINATION_PASSWORD"),
+	}
+	imageFilter := os.Getenv("IMAGE_FILTER")
+	artifactType := os.Getenv("ARTIFACT_TYPE")
+	if artifactType == "docker"{
+		replicateDocker(creds, sourceRegistry, destinationRegistry, imageFilter)
+	} else if artifactType == "binary" {
+		replicateBinary(creds, sourceRegistry, destinationRegistry, imageFilter)
 	}
 }

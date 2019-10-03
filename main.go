@@ -5,6 +5,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"io"
@@ -30,10 +33,9 @@ type ImageToReplicate struct {
 	DestinationTag      string
 }
 
-
-func GetRepos(docker_registry string, token string, user string, pass string) ([]string, error) {
+func GetRepos(dockerRegistry string, user string, pass string) ([]string, error) {
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", "https://"+docker_registry+"/v2/_catalog", nil)
+	req, err := http.NewRequest("GET", "https://"+dockerRegistry+"/v2/_catalog", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -53,6 +55,47 @@ func GetRepos(docker_registry string, token string, user string, pass string) ([
 		return nil, err
 	}
 	return b.Repositories, nil
+}
+
+func listFiles(host string, dir string, user string, pass string) ([]string, error) {
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", "https://"+host+"/artifactory/api/storage/"+dir, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(user, pass)
+	resp, err := client.Do(req)
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	type ch struct {
+		Uri    string
+		Folder bool
+	}
+	type storageInfo struct {
+		Repo         string
+		Path         string
+		Created      string
+		CreatedBy    string
+		LastModified string
+		ModifiedBy   string
+		LastUpdated  string
+		Children     []ch
+		Uri          string
+	}
+	var result storageInfo
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		return nil, err
+	}
+	var output []string
+	for _, file := range result.Children {
+		url := result.Uri + file.Uri
+		output = append(output, url)
+	}
+	return output, nil
 }
 
 func listTags(docker_registry string, image string, user string, pass string) ([]string, error) {
@@ -181,7 +224,7 @@ func deleteImage(imageName string) error {
 	return err
 }
 
-func replicate(image ImageToReplicate, creds Creds) error {
+func doReplicateDocker(image ImageToReplicate, creds Creds) error {
 	destinationImage := image.DestinationRegistry + "/" + image.DestinationImage + ":" + image.DestinationTag
 	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag
 	fmt.Printf("%s -> %s\n", sourceImage, destinationImage)
@@ -204,12 +247,12 @@ func replicate(image ImageToReplicate, creds Creds) error {
 	return nil
 }
 
-func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry string, imageFilter string){
-	sourceRepos, err := GetRepos(sourceRegistry, "", creds.SourceUser, creds.SourcePassword)
+func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry string, imageFilter string) {
+	sourceRepos, err := GetRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
 		panic(err)
 	}
-	destinationRepos, err := GetRepos(destinationRegistry, "", creds.DestinationUser, creds.DestinationPassword)
+	destinationRepos, err := GetRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword)
 	if err != nil {
 		panic(err)
 	}
@@ -255,7 +298,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 				DestinationTag:      sourceTag,
 			}
 			if !repoFound {
-				err := replicate(image, creds)
+				err := doReplicateDocker(image, creds)
 				if err != nil {
 					panic(err)
 				}
@@ -274,7 +317,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 				if destinationTagFound {
 					continue
 				} else {
-					err = replicate(image, creds)
+					err = doReplicateDocker(image, creds)
 					if err != nil {
 						panic(err)
 					}
@@ -284,8 +327,29 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	}
 }
 
-func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, imageFilter string){
-
+func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, repo string, awsBucket string) {
+	binariesList, err := listFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
+	if err != nil {
+		panic(err)
+	}
+	for _, fileURL := range binariesList {
+		resp, err := http.Get(fileURL)
+		if err != nil {
+			panic(err)
+		}
+		defer resp.Body.Close()
+		fileURLSplit := strings.Split(fileURL, "/")
+		fileName := fileURLSplit[len(fileURLSplit)-1]
+		sess, err := session.NewSession(&aws.Config{})
+		uploader := s3manager.NewUploader(sess)
+		_, err = uploader.Upload(&s3manager.UploadInput{
+			Bucket: aws.String(awsBucket),
+			Key:    aws.String(fileName),
+			Body:   resp.Body})
+		if err != nil {
+			panic(err)
+		}
+	}
 }
 
 func main() {
@@ -297,18 +361,24 @@ func main() {
 	if destinationRegistry == "" {
 		panic("empty DESTINATION_REGISTRY env variable")
 	}
+
+	imageFilter := os.Getenv("IMAGE_FILTER")
+	artifactType := os.Getenv("ARTIFACT_TYPE")
 	creds := Creds{
 		SourceUser:          os.Getenv("SOURCE_USER"),
 		SourcePassword:      os.Getenv("SOURCE_PASSWORD"),
 		DestinationUser:     os.Getenv("DESTINATION_USER"),
 		DestinationPassword: os.Getenv("DESTINATION_PASSWORD"),
 	}
-	imageFilter := os.Getenv("IMAGE_FILTER")
-	artifactType := os.Getenv("ARTIFACT_TYPE")
-	if artifactType == "docker"{
+
+	if artifactType == "docker" {
 		replicateDocker(creds, sourceRegistry, destinationRegistry, imageFilter)
 	} else if artifactType == "binary" {
-		replicateBinary(creds, sourceRegistry, destinationRegistry, imageFilter)
+		awsBucket := os.Getenv("AWS_BUCKET")
+		if awsBucket == "" {
+			panic("empty AWS_BUCKET")
+		}
+		replicateBinary(creds, sourceRegistry, destinationRegistry, imageFilter, awsBucket)
 	} else {
 		panic("unknown or empty ARTIFACT_TYPE")
 	}

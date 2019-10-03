@@ -92,7 +92,7 @@ func listFiles(host string, dir string, user string, pass string) ([]string, err
 	}
 	var output []string
 	for _, file := range result.Children {
-		url := result.Uri + file.Uri
+		url := "http://"+host+"/artifactory/"+result.Repo+result.Path+file.Uri
 		output = append(output, url)
 	}
 	return output, nil
@@ -327,23 +327,24 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	}
 }
 
-func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, repo string, awsBucket string) {
+func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, repo string) {
 	binariesList, err := listFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
 		panic(err)
 	}
 	for _, fileURL := range binariesList {
+		fmt.Println(fileURL)
 		resp, err := http.Get(fileURL)
 		if err != nil {
 			panic(err)
 		}
 		defer resp.Body.Close()
-		fileURLSplit := strings.Split(fileURL, "/")
+		fileURLSplit := strings.Split(fileURL, "/artifactory/")
 		fileName := fileURLSplit[len(fileURLSplit)-1]
 		sess, err := session.NewSession(&aws.Config{})
 		uploader := s3manager.NewUploader(sess)
 		_, err = uploader.Upload(&s3manager.UploadInput{
-			Bucket: aws.String(awsBucket),
+			Bucket: aws.String(destinationRegistry),
 			Key:    aws.String(fileName),
 			Body:   resp.Body})
 		if err != nil {
@@ -374,11 +375,7 @@ func main() {
 	if artifactType == "docker" {
 		replicateDocker(creds, sourceRegistry, destinationRegistry, imageFilter)
 	} else if artifactType == "binary" {
-		awsBucket := os.Getenv("AWS_BUCKET")
-		if awsBucket == "" {
-			panic("empty AWS_BUCKET")
-		}
-		replicateBinary(creds, sourceRegistry, destinationRegistry, imageFilter, awsBucket)
+		replicateBinary(creds, sourceRegistry, destinationRegistry, imageFilter)
 	} else {
 		panic("unknown or empty ARTIFACT_TYPE")
 	}

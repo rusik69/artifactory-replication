@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
@@ -92,7 +93,7 @@ func listFiles(host string, dir string, user string, pass string) ([]string, err
 	}
 	var output []string
 	for _, file := range result.Children {
-		url := "http://"+host+"/artifactory/"+result.Repo+result.Path+file.Uri
+		url := "http://" + host + "/artifactory/" + result.Repo + result.Path + file.Uri
 		output = append(output, url)
 	}
 	return output, nil
@@ -327,28 +328,55 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	}
 }
 
+func ListS3Files(S3Bucket string) ([]string, error) {
+	sess, _ := session.NewSession(&aws.Config{})
+	svc := s3.New(sess)
+	var output []string
+	err := svc.ListObjectsPages(&s3.ListObjectsInput{Bucket: &S3Bucket,},
+		func(p *s3.ListObjectsOutput, last bool) (shouldContinue bool) {
+			for _, obj := range p.Contents {
+				output = append(output, *obj.Key)
+			}
+			return true
+		})
+	return output, err
+}
+
 func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, repo string) {
-	binariesList, err := listFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
+	sourceBinariesList, err := listFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
 		panic(err)
 	}
-	for _, fileURL := range binariesList {
+	destinationBinariesList, err := ListS3Files(destinationRegistry)
+	if err != nil {
+		panic(err)
+	}
+	for _, fileURL := range sourceBinariesList {
 		fmt.Println(fileURL)
-		resp, err := http.Get(fileURL)
-		if err != nil {
-			panic(err)
-		}
-		defer resp.Body.Close()
 		fileURLSplit := strings.Split(fileURL, "/artifactory/")
 		fileName := fileURLSplit[len(fileURLSplit)-1]
-		sess, err := session.NewSession(&aws.Config{})
-		uploader := s3manager.NewUploader(sess)
-		_, err = uploader.Upload(&s3manager.UploadInput{
-			Bucket: aws.String(destinationRegistry),
-			Key:    aws.String(fileName),
-			Body:   resp.Body})
-		if err != nil {
-			panic(err)
+		fileFound := false
+		for _, destinationFileName := range destinationBinariesList {
+			if destinationFileName == fileName {
+				fileFound = true
+			}
+		}
+		if ! fileFound {
+			resp, err := http.Get(fileURL)
+			if err != nil {
+				panic(err)
+			}
+			defer resp.Body.Close()
+			fmt.Println(destinationRegistry + "/" + fileName)
+			sess, err := session.NewSession(&aws.Config{})
+			uploader := s3manager.NewUploader(sess)
+			_, err = uploader.Upload(&s3manager.UploadInput{
+				Bucket: aws.String(destinationRegistry),
+				Key:    aws.String(fileName),
+				Body:   resp.Body})
+			if err != nil {
+				panic(err)
+			}
 		}
 	}
 }

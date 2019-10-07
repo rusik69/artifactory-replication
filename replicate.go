@@ -408,8 +408,10 @@ func main() {
 	}
 
 	if artifactType == "docker" {
+		fmt.Println("replicating docker images repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry)
 		replicateDocker(creds, sourceRegistry, destinationRegistry, imageFilter)
 	} else if artifactType == "binary" {
+		fmt.Println("replicating binaries repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry + " S3 bucket")
 		replicateBinary(creds, sourceRegistry, destinationRegistry, imageFilter)
 	} else {
 		panic("unknown or empty ARTIFACT_TYPE")

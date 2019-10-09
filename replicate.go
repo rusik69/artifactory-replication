@@ -58,9 +58,11 @@ func GetRepos(dockerRegistry string, user string, pass string) ([]string, error)
 	return b.Repositories, nil
 }
 
-func listFiles(host string, dir string, user string, pass string) ([]string, error) {
+func listFiles(host string, dir string, user string, pass string) (map[string]bool, error) {
+	url := "https://"+host+"/artifactory/api/storage/"+dir
+	fmt.Println(url)
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", "https://"+host+"/artifactory/api/storage/"+dir, nil)
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -91,10 +93,9 @@ func listFiles(host string, dir string, user string, pass string) ([]string, err
 	if err != nil {
 		return nil, err
 	}
-	var output []string
+	var output = make(map[string]bool)
 	for _, file := range result.Children {
-		url := "http://" + host + "/artifactory/" + result.Repo + result.Path + file.Uri
-		output = append(output, url)
+		output[strings.Trim(file.Uri, "/")] = file.Folder
 	}
 	return output, nil
 }
@@ -248,7 +249,7 @@ func doReplicateDocker(image ImageToReplicate, creds Creds) error {
 	return nil
 }
 
-func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry string, imageFilter string)  {
+func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry string, imageFilter string) {
 	var copiedArtifacts uint = 0
 	sourceRepos, err := GetRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
@@ -347,6 +348,7 @@ func ListS3Files(S3Bucket string) ([]string, error) {
 }
 
 func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, repo string) {
+	fmt.Println("Processing repo " + repo)
 	var replicatedArtifacts uint = 0
 	sourceBinariesList, err := listFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
@@ -356,33 +358,39 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 	if err != nil {
 		panic(err)
 	}
-	for _, fileURL := range sourceBinariesList {
-		fmt.Println(fileURL)
-		fileURLSplit := strings.Split(fileURL, "/artifactory/")
-		fileName := fileURLSplit[len(fileURLSplit)-1]
-		fileFound := false
-		for _, destinationFileName := range destinationBinariesList {
-			if destinationFileName == fileName {
-				fileFound = true
+	for fileName, fileIsDir := range sourceBinariesList {
+		if fileIsDir {
+			replicateBinary(creds, sourceRegistry, destinationRegistry, repo + "/" + fileName)
+		} else {
+			fileUrl := "http://" + sourceRegistry + "/artifactory/" + repo + "/" + fileName
+			fileFound := false
+			for _, destinationFileName := range destinationBinariesList {
+				if destinationFileName == fileName {
+					fileFound = true
+					break
+				}
 			}
-		}
-		if ! fileFound {
-			resp, err := http.Get(fileURL)
-			if err != nil {
-				panic(err)
+			if ! fileFound {
+				fmt.Println("Downloading " + fileUrl)
+				resp, err := http.Get(fileUrl)
+				if err != nil {
+					panic(err)
+				}
+				defer resp.Body.Close()
+				sess, err := session.NewSession(&aws.Config{})
+				uploader := s3manager.NewUploader(sess)
+				destinationFileName := repo + "/" + fileName
+				destinationFileName = destinationFileName[strings.IndexByte(destinationFileName, '/'):]
+				fmt.Println("Uploading " + destinationFileName + " to " + destinationRegistry)
+				_, err = uploader.Upload(&s3manager.UploadInput{
+					Bucket: aws.String(destinationRegistry),
+					Key:    aws.String(destinationFileName),
+					Body:   resp.Body})
+				if err != nil {
+					panic(err)
+				}
+				replicatedArtifacts += 1
 			}
-			defer resp.Body.Close()
-			fmt.Println(destinationRegistry + "/" + fileName)
-			sess, err := session.NewSession(&aws.Config{})
-			uploader := s3manager.NewUploader(sess)
-			_, err = uploader.Upload(&s3manager.UploadInput{
-				Bucket: aws.String(destinationRegistry),
-				Key:    aws.String(fileName),
-				Body:   resp.Body})
-			if err != nil {
-				panic(err)
-			}
-			replicatedArtifacts += 1
 		}
 	}
 	fmt.Printf("%d artifacts copied\n", replicatedArtifacts)
@@ -408,7 +416,7 @@ func main() {
 	}
 
 	if artifactType == "docker" {
-		fmt.Println("replicating docker images repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry)
+		fmt.Println("Replicating docker images repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry)
 		replicateDocker(creds, sourceRegistry, destinationRegistry, imageFilter)
 	} else if artifactType == "binary" {
 		fmt.Println("replicating binaries repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry + " S3 bucket")

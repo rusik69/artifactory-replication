@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -15,6 +16,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -60,7 +62,6 @@ func GetRepos(dockerRegistry string, user string, pass string) ([]string, error)
 
 func listFiles(host string, dir string, user string, pass string) (map[string]bool, error) {
 	url := "https://"+host+"/artifactory/api/storage/"+dir
-	fmt.Println(url)
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -377,15 +378,35 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 					panic(err)
 				}
 				defer resp.Body.Close()
-				sess, err := session.NewSession(&aws.Config{})
-				uploader := s3manager.NewUploader(sess)
 				destinationFileName := repo + "/" + fileName
 				destinationFileName = destinationFileName[strings.IndexByte(destinationFileName, '/'):]
+				var binaryToWrite io.Reader
+				matched, err := regexp.MatchString("/index.yaml$", fileUrl)
+				if err != nil {
+					panic(err)
+				}
+				if matched {
+					linkToReplace, err := regexp.Compile("https?://" + sourceRegistry + "/artifactory/" + strings.Split(repo, "/")[0] + "/");
+					if err != nil {
+						panic(err)
+					}
+					body, err := ioutil.ReadAll(resp.Body)
+					if err != nil {
+						panic(err)
+					}
+					var tmpBinaryToWrite bytes.Buffer
+					tmpBinaryToWrite.Write(linkToReplace.ReplaceAll(body, []byte("https://" + destinationRegistry + "/")))
+					binaryToWrite = &tmpBinaryToWrite
+				} else {
+					binaryToWrite = resp.Body
+				}
+				sess, err := session.NewSession(&aws.Config{})
+				uploader := s3manager.NewUploader(sess)
 				fmt.Println("Uploading " + destinationFileName + " to " + destinationRegistry)
 				_, err = uploader.Upload(&s3manager.UploadInput{
 					Bucket: aws.String(destinationRegistry),
 					Key:    aws.String(destinationFileName),
-					Body:   resp.Body})
+					Body:   binaryToWrite})
 				if err != nil {
 					panic(err)
 				}

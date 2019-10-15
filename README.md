@@ -1,5 +1,5 @@
 # artifactory-replication
-ARTIFACTORY_TYPE: "binary" for binary artifacts replication, "docker" for docker images
+ARTIFACT_TYPE: "binary" for binary artifacts replication, "docker" for docker images
 
 # env variables for docker registry to docker registry replication:
 SOURCE_REGISTRY: source docker registry to sync from

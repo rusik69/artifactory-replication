@@ -366,9 +366,11 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			fileUrl := "http://" + sourceRegistry + "/artifactory/" + repo + "/" + fileName
 			fileFound := false
 			for _, destinationFileName := range destinationBinariesList {
-				fmt.Println(destinationFileName)
+				ss := strings.Split(destinationFileName, "/")
+				destinationFileNameWithoutPath := ss[len(ss)-1]
+				fmt.Println(destinationFileNameWithoutPath)
 				fmt.Println(fileName)
-				if destinationFileName == fileName {
+				if destinationFileNameWithoutPath == fileName {
 					fileFound = true
 					break
 				}
@@ -382,6 +384,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 				defer resp.Body.Close()
 				destinationFileName := repo + "/" + fileName
 				destinationFileName = destinationFileName[strings.IndexByte(destinationFileName, '/'):]
+				fmt.Println("dest: " + destinationFileName)
 				var binaryToWrite io.Reader
 				matched, err := regexp.MatchString("/index.yaml$", fileUrl)
 				if err != nil {

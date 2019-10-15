@@ -361,11 +361,13 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 	}
 	for fileName, fileIsDir := range sourceBinariesList {
 		if fileIsDir {
-			replicateBinary(creds, sourceRegistry, destinationRegistry, repo+"/"+fileName)
+			replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileName)
 		} else {
 			fileUrl := "http://" + sourceRegistry + "/artifactory/" + repo + "/" + fileName
 			fileFound := false
 			for _, destinationFileName := range destinationBinariesList {
+				fmt.Println(destinationFileName)
+				fmt.Println(fileName)
 				if destinationFileName == fileName {
 					fileFound = true
 					break
@@ -441,7 +443,7 @@ func main() {
 		replicateDocker(creds, sourceRegistry, destinationRegistry, imageFilter)
 	} else if artifactType == "binary" {
 		fmt.Println("replicating binaries repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry + " S3 bucket")
-		replicateBinary(creds, sourceRegistry, destinationRegistry, desinationRegistryType, imageFilter)
+		replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter)
 	} else {
 		panic("unknown or empty ARTIFACT_TYPE")
 	}

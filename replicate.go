@@ -61,7 +61,7 @@ func GetRepos(dockerRegistry string, user string, pass string) ([]string, error)
 }
 
 func listFiles(host string, dir string, user string, pass string) (map[string]bool, error) {
-	url := "https://"+host+"/artifactory/api/storage/"+dir
+	url := "https://" + host + "/artifactory/api/storage/" + dir
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -348,7 +348,7 @@ func ListS3Files(S3Bucket string) ([]string, error) {
 	return output, err
 }
 
-func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, repo string) {
+func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string) {
 	fmt.Println("Processing repo " + repo)
 	var replicatedArtifacts uint = 0
 	sourceBinariesList, err := listFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
@@ -361,7 +361,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 	}
 	for fileName, fileIsDir := range sourceBinariesList {
 		if fileIsDir {
-			replicateBinary(creds, sourceRegistry, destinationRegistry, repo + "/" + fileName)
+			replicateBinary(creds, sourceRegistry, destinationRegistry, repo+"/"+fileName)
 		} else {
 			fileUrl := "http://" + sourceRegistry + "/artifactory/" + repo + "/" + fileName
 			fileFound := false
@@ -395,7 +395,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 						panic(err)
 					}
 					var tmpBinaryToWrite bytes.Buffer
-					tmpBinaryToWrite.Write(linkToReplace.ReplaceAll(body, []byte("https://" + destinationRegistry + "/")))
+					tmpBinaryToWrite.Write(linkToReplace.ReplaceAll(body, []byte("https://"+destinationRegistry+"/")))
 					binaryToWrite = &tmpBinaryToWrite
 				} else {
 					binaryToWrite = resp.Body
@@ -426,9 +426,9 @@ func main() {
 	if destinationRegistry == "" {
 		panic("empty DESTINATION_REGISTRY env variable")
 	}
-
 	imageFilter := os.Getenv("IMAGE_FILTER")
 	artifactType := os.Getenv("ARTIFACT_TYPE")
+	destinationRegistryType := os.Getenv("DESTINATION_REGISTRY_TYPE")
 	creds := Creds{
 		SourceUser:          os.Getenv("SOURCE_USER"),
 		SourcePassword:      os.Getenv("SOURCE_PASSWORD"),
@@ -441,7 +441,7 @@ func main() {
 		replicateDocker(creds, sourceRegistry, destinationRegistry, imageFilter)
 	} else if artifactType == "binary" {
 		fmt.Println("replicating binaries repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry + " S3 bucket")
-		replicateBinary(creds, sourceRegistry, destinationRegistry, imageFilter)
+		replicateBinary(creds, sourceRegistry, destinationRegistry, desinationRegistryType, imageFilter)
 	} else {
 		panic("unknown or empty ARTIFACT_TYPE")
 	}

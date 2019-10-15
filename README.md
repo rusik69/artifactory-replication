@@ -20,7 +20,9 @@ DESTINATION_PASSWORD: destination registry password, if needed
 # env variables for artifactory binary to S3 replication
 SOURCE_REGISTRY: source artifactory binary repo to sync from
 
-DESTINATION_REGISTRY: destination S3 bucket name to sync to
+DESTINATION_REGISTRY: destination binary registry name to sync to
+
+DESTINATION_REGISTRY_TYPE: destination registry type
 
 IMAGE_FILTER: image path repository, recursive copy not supported, specify inmost directory
 

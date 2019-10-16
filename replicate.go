@@ -372,9 +372,8 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			for _, destinationFileName := range destinationBinariesList {
 				ss := strings.Split(destinationFileName, "/")
 				destinationFileNameWithoutPath := ss[len(ss)-1]
-				fmt.Println(destinationFileNameWithoutPath)
-				fmt.Println(fileName)
 				if destinationFileNameWithoutPath == fileName {
+					fmt.Println("Found: " + destinationFileName)
 					fileFound = true
 					break
 				}

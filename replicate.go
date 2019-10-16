@@ -38,7 +38,7 @@ type ImageToReplicate struct {
 
 func GetRepos(dockerRegistry string, user string, pass string) ([]string, error) {
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", "https://"+dockerRegistry+"/v2/_catalog", nil)
+	req, err := http.NewRequest("GET", "https://"+dockerRegistry+"/v2/_catalog?n=999999", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -289,6 +289,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 		for _, destinationRepo := range destinationFilteredRepos {
 			if sourceRepo == destinationRepo {
 				repoFound = true
+				fmt.Println("Found repo: " + sourceRepo)
 				break
 			}
 		}
@@ -302,6 +303,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 				DestinationTag:      sourceTag,
 			}
 			if !repoFound {
+				fmt.Println("Repo not found: " + sourceRepo)
 				err := doReplicateDocker(image, creds)
 				if err != nil {
 					panic(err)
@@ -316,12 +318,14 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 				for _, destinationTag := range destinationTags {
 					if sourceTag == destinationTag {
 						destinationTagFound = true
+						fmt.Println("Found repo tag: " + sourceRepo + ":" + sourceTag)
 						break
 					}
 				}
 				if destinationTagFound {
 					continue
 				} else {
+					fmt.Println("Not found image tag: " + sourceRepo + ":" + sourceTag)
 					err := doReplicateDocker(image, creds)
 					if err != nil {
 						panic(err)
@@ -391,7 +395,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 					panic(err)
 				}
 				if matched {
-					linkToReplace, err := regexp.Compile("https?://" + sourceRegistry + "/artifactory/" + strings.Split(repo, "/")[0] + "/");
+					linkToReplace, err := regexp.Compile("(https?://.*?/artifactory/.*?/)");
 					if err != nil {
 						panic(err)
 					}

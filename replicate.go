@@ -352,21 +352,18 @@ func ListS3Files(S3Bucket string) ([]string, error) {
 	return output, err
 }
 
-func downloadFromArtifactory(string fileUrl, string destinationRegistry) []byte {
+func downloadFromArtifactory(fileUrl string, destinationRegistry string) io.Reader {
 	fmt.Println("Downloading " + fileUrl)
 	resp, err := http.Get(fileUrl)
 	if err != nil {
 		panic(err)
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		panic(err)
-	}
 	matched, err := regexp.MatchString("/index.yaml$", fileUrl)
 	if err != nil {
 		panic(err)
 	}
+	var binaryToWrite io.Reader
 	if matched {
 		linkToReplace, err := regexp.Compile("(https?://.*?/artifactory/.*?/)");
 		if err != nil {
@@ -398,7 +395,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			panic(err)
 		}
 	} else if destinationRegistryType == "artifactory"{
-		destinationBinariesList, err := listArtifactoryFiles(destinationRegistry)
+		destinationBinariesList, err := listArtifactoryFiles(destinationRegistry, repo, creds.DestinationUser, creds.DestinationPassword)
 		if err != nil {
 			panic(err)
 		}
@@ -407,7 +404,6 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 		if fileIsDir {
 			replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileName)
 		} else {
-			body = downloadFromArtifactory(fileUrl)
 			fileUrl := "http://" + sourceRegistry + "/artifactory/" + repo + "/" + fileName
 			fileFound := false
 			for _, destinationFileName := range destinationBinariesList {
@@ -419,7 +415,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 					break
 				}
 			}
-			if ! fileFound {
+			if ! fileFound  || fileName == "index.yaml"{
 				fmt.Println("Downloading " + fileUrl)
 				body := downloadFromArtifactory(fileUrl, destinationRegistry)
 				destinationFileName := repo + "/" + fileName

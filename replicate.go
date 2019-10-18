@@ -352,7 +352,7 @@ func ListS3Files(S3Bucket string) (map[string]bool, error) {
 	return output, err
 }
 
-func downloadFromArtifactory(fileUrl string, destinationRegistry string) io.Reader {
+func downloadFromArtifactory(fileUrl string, destinationRegistry string, helmCdnDomain string) io.Reader {
 	fmt.Println("Downloading " + fileUrl)
 	resp, err := http.Get(fileUrl)
 	if err != nil {
@@ -363,8 +363,8 @@ func downloadFromArtifactory(fileUrl string, destinationRegistry string) io.Read
 		panic(err)
 	}
 	var binaryToWrite io.Reader
-	if matched {
-		linkToReplace, err := regexp.Compile("(https?://.*?/artifactory/.*?/)");
+	if matched && helmCdnDomain != "" {
+		linkToReplace, err := regexp.Compile("(https?://.*?/artifactory/.*?/)")
 		if err != nil {
 			panic(err)
 		}
@@ -373,7 +373,7 @@ func downloadFromArtifactory(fileUrl string, destinationRegistry string) io.Read
 			panic(err)
 		}
 		var tmpBinaryToWrite bytes.Buffer
-		tmpBinaryToWrite.Write(linkToReplace.ReplaceAll(body, []byte("https://"+destinationRegistry+"/")))
+		tmpBinaryToWrite.Write(linkToReplace.ReplaceAll(body, []byte("https://"+helmCdnDomain+"/")))
 		binaryToWrite = &tmpBinaryToWrite
 	} else {
 		binaryToWrite = resp.Body
@@ -381,7 +381,7 @@ func downloadFromArtifactory(fileUrl string, destinationRegistry string) io.Read
 	return binaryToWrite
 }
 
-func uploadToS3(destinationRegistry string, destinationFileName string, body io.Reader) error{
+func uploadToS3(destinationRegistry string, destinationFileName string, body io.Reader) error {
 	sess, err := session.NewSession(&aws.Config{})
 	uploader := s3manager.NewUploader(sess)
 	fmt.Println("Uploading " + destinationFileName + " to " + destinationRegistry)
@@ -397,7 +397,7 @@ func uploadToArtifactory(destinationRegistry string, repo string, destinationFil
 	fmt.Println("Uploading: " + url)
 	client := &http.Client{}
 	req, err := http.NewRequest(http.MethodPut, url, body)
-	if err != nil{
+	if err != nil {
 		return err
 	}
 	req.SetBasicAuth(destinationUser, destinationPassword)
@@ -405,7 +405,7 @@ func uploadToArtifactory(destinationRegistry string, repo string, destinationFil
 	return err
 }
 
-func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string) {
+func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string, helmCdnDomain string) {
 	fmt.Println("Processing repo " + repo)
 	var replicatedArtifacts uint = 0
 	var destinationBinariesList map[string]bool
@@ -418,7 +418,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 		if err != nil {
 			panic(err)
 		}
-	} else if destinationRegistryType == "artifactory"{
+	} else if destinationRegistryType == "artifactory" {
 		destinationBinariesList, err = listArtifactoryFiles(destinationRegistry, repo, creds.DestinationUser, creds.DestinationPassword)
 		if err != nil {
 			panic(err)
@@ -426,7 +426,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 	}
 	for fileName, fileIsDir := range sourceBinariesList {
 		if fileIsDir {
-			replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileName)
+			replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileName, helmCdnDomain)
 		} else {
 			fileUrl := "http://" + sourceRegistry + "/artifactory/" + repo + "/" + fileName
 			fileFound := false
@@ -439,8 +439,8 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 					break
 				}
 			}
-			if ! fileFound  || fileName == "index.yaml"{
-				body := downloadFromArtifactory(fileUrl, destinationRegistry)
+			if ! fileFound || fileName == "index.yaml" {
+				body := downloadFromArtifactory(fileUrl, destinationRegistry, helmCdnDomain)
 				destinationFileName := repo + "/" + fileName
 				destinationFileName = destinationFileName[strings.IndexByte(destinationFileName, '/'):]
 				fmt.Println("Dest: " + destinationFileName)
@@ -451,7 +451,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 					}
 				} else if destinationRegistryType == "artifactory" {
 					err := uploadToArtifactory(destinationRegistry, repo, fileName, creds.DestinationUser, creds.DestinationPassword, body)
-					if err != nil{
+					if err != nil {
 						panic(err)
 					}
 				}
@@ -474,7 +474,8 @@ func main() {
 	imageFilter := os.Getenv("IMAGE_FILTER")
 	artifactType := os.Getenv("ARTIFACT_TYPE")
 	destinationRegistryType := os.Getenv("DESTINATION_REGISTRY_TYPE")
-	if destinationRegistryType != "s3" && destinationRegistryType != "artifactory"{
+	helmCdnDomain := os.Getenv("HELM_CDN_DOMAIN")
+	if destinationRegistryType != "s3" && destinationRegistryType != "artifactory" {
 		panic("unknown or empty DESTINATION_REGISTRY_TYPE")
 	}
 	creds := Creds{
@@ -489,7 +490,10 @@ func main() {
 		replicateDocker(creds, sourceRegistry, destinationRegistry, imageFilter)
 	} else if artifactType == "binary" {
 		fmt.Println("replicating binaries repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry + " S3 bucket")
-		replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter)
+		if helmCdnDomain != "" {
+			fmt.Println("Helm CDN domain: " + helmCdnDomain)
+		}
+		replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, helmCdnDomain)
 	} else {
 		panic("unknown or empty ARTIFACT_TYPE")
 	}

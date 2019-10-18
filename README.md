@@ -35,3 +35,5 @@ AWS_ACCESS_KEY_ID: aws access key id for user with write access to s3 bucket
 AWS_SECRET_ACCESS_KEY: aws secret access key for user with write access to s3 bucket
 
 AWS_REGION: aws region where bucket is located
+
+HELM_CDN_DOMAIN: domain name for cdn to use in helm charts

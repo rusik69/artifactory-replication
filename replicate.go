@@ -338,14 +338,14 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	fmt.Printf("%d artifacts copied\n", copiedArtifacts)
 }
 
-func ListS3Files(S3Bucket string) ([]string, error) {
+func ListS3Files(S3Bucket string) (map[string]bool, error) {
 	sess, _ := session.NewSession(&aws.Config{})
 	svc := s3.New(sess)
-	var output []string
+	output := make(map[string]bool)
 	err := svc.ListObjectsPages(&s3.ListObjectsInput{Bucket: &S3Bucket,},
 		func(p *s3.ListObjectsOutput, last bool) (shouldContinue bool) {
 			for _, obj := range p.Contents {
-				output = append(output, *obj.Key)
+				output[*obj.Key] = false
 			}
 			return true
 		})
@@ -382,20 +382,44 @@ func downloadFromArtifactory(fileUrl string, destinationRegistry string) io.Read
 	return binaryToWrite
 }
 
+func uploadToS3(destinationRegistry string, destinationFileName string, body io.Reader) error{
+	sess, err := session.NewSession(&aws.Config{})
+	uploader := s3manager.NewUploader(sess)
+	fmt.Println("Uploading " + destinationFileName + " to " + destinationRegistry)
+	_, err = uploader.Upload(&s3manager.UploadInput{
+		Bucket: aws.String(destinationRegistry),
+		Key:    aws.String(destinationFileName),
+		Body:   body})
+	return err
+}
+
+func uploadToArtifactory(destinationRegistry string, destinationFileName string, destinationUser string, destinationPassword string, body io.Reader) error {
+	url := "https://" + destinationRegistry + "/artifactory/" + destinationFileName
+	client := &http.Client{}
+	req, err := http.NewRequest(http.MethodPut, url, body)
+	if err != nil{
+		return err
+	}
+	req.SetBasicAuth(destinationUser, destinationPassword);
+	_, err = client.Do(req)
+	return err
+}
+
 func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string) {
 	fmt.Println("Processing repo " + repo)
 	var replicatedArtifacts uint = 0
+	var destinationBinariesList map[string]bool
 	sourceBinariesList, err := listArtifactoryFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
 		panic(err)
 	}
 	if destinationRegistryType == "s3" {
-		destinationBinariesList, err := ListS3Files(destinationRegistry)
+		destinationBinariesList, err = ListS3Files(destinationRegistry)
 		if err != nil {
 			panic(err)
 		}
 	} else if destinationRegistryType == "artifactory"{
-		destinationBinariesList, err := listArtifactoryFiles(destinationRegistry, repo, creds.DestinationUser, creds.DestinationPassword)
+		destinationBinariesList, err = listArtifactoryFiles(destinationRegistry, repo, creds.DestinationUser, creds.DestinationPassword)
 		if err != nil {
 			panic(err)
 		}
@@ -406,7 +430,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 		} else {
 			fileUrl := "http://" + sourceRegistry + "/artifactory/" + repo + "/" + fileName
 			fileFound := false
-			for _, destinationFileName := range destinationBinariesList {
+			for destinationFileName, _ := range destinationBinariesList {
 				ss := strings.Split(destinationFileName, "/")
 				destinationFileNameWithoutPath := ss[len(ss)-1]
 				if destinationFileNameWithoutPath == fileName {
@@ -421,15 +445,16 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 				destinationFileName := repo + "/" + fileName
 				destinationFileName = destinationFileName[strings.IndexByte(destinationFileName, '/'):]
 				fmt.Println("Dest: " + destinationFileName)
-				sess, err := session.NewSession(&aws.Config{})
-				uploader := s3manager.NewUploader(sess)
-				fmt.Println("Uploading " + destinationFileName + " to " + destinationRegistry)
-				_, err = uploader.Upload(&s3manager.UploadInput{
-					Bucket: aws.String(destinationRegistry),
-					Key:    aws.String(destinationFileName),
-					Body:   binaryToWrite})
-				if err != nil {
-					panic(err)
+				if destinationRegistryType == "s3" {
+					err := uploadToS3(destinationRegistry, destinationFileName, body)
+					if err != nil {
+						panic(err)
+					}
+				} else if destinationRegistryType == "artifactory" {
+					err := uploadToArtifactory(destinationRegistry, destinationFileName, creds.DestinationUser, creds.DestinationPassword, body)
+					if err != nil{
+						panic(err)
+					}
 				}
 				replicatedArtifacts += 1
 			}

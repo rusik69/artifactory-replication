@@ -358,7 +358,6 @@ func downloadFromArtifactory(fileUrl string, destinationRegistry string) io.Read
 	if err != nil {
 		panic(err)
 	}
-	defer resp.Body.Close()
 	matched, err := regexp.MatchString("/index.yaml$", fileUrl)
 	if err != nil {
 		panic(err)
@@ -393,14 +392,15 @@ func uploadToS3(destinationRegistry string, destinationFileName string, body io.
 	return err
 }
 
-func uploadToArtifactory(destinationRegistry string, destinationFileName string, destinationUser string, destinationPassword string, body io.Reader) error {
-	url := "https://" + destinationRegistry + "/artifactory/" + destinationFileName
+func uploadToArtifactory(destinationRegistry string, repo string, destinationFileName string, destinationUser string, destinationPassword string, body io.Reader) error {
+	url := "https://" + destinationRegistry + "/artifactory/" + repo + destinationFileName
+	fmt.Println("Uploading: " + url)
 	client := &http.Client{}
 	req, err := http.NewRequest(http.MethodPut, url, body)
 	if err != nil{
 		return err
 	}
-	req.SetBasicAuth(destinationUser, destinationPassword);
+	req.SetBasicAuth(destinationUser, destinationPassword)
 	_, err = client.Do(req)
 	return err
 }
@@ -440,7 +440,6 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 				}
 			}
 			if ! fileFound  || fileName == "index.yaml"{
-				fmt.Println("Downloading " + fileUrl)
 				body := downloadFromArtifactory(fileUrl, destinationRegistry)
 				destinationFileName := repo + "/" + fileName
 				destinationFileName = destinationFileName[strings.IndexByte(destinationFileName, '/'):]
@@ -451,7 +450,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 						panic(err)
 					}
 				} else if destinationRegistryType == "artifactory" {
-					err := uploadToArtifactory(destinationRegistry, destinationFileName, creds.DestinationUser, creds.DestinationPassword, body)
+					err := uploadToArtifactory(destinationRegistry, repo, fileName, creds.DestinationUser, creds.DestinationPassword, body)
 					if err != nil{
 						panic(err)
 					}

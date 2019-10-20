@@ -1,5 +1,10 @@
 # artifactory-replication
 ARTIFACT_TYPE: "binary" for binary artifacts replication, "docker" for docker images
+JUMP_HOST_NAME: jumphost hostname
+JUMP_HOST_USER: username to connect to jumphost
+JUMP_HOST_KEY: key to use when connecting to jumphost
+JUMP_HOST_DESTINATION: destination host and port to proxy
+JUMP_HOST_LOCAL_PORT: local port to use when connecting through jumphost
 
 # env variables for docker registry to docker registry replication:
 SOURCE_REGISTRY: source docker registry to sync from

@@ -408,18 +408,20 @@ func uploadToArtifactory(destinationRegistry string, repo string, destinationFil
 	return err
 }
 
-func listOssFiles(repo string, creds Creds, jumpHostLocalPort string) (map[string]bool, error){
-	client, err := oss.New("localhost:" + jumpHostLocalPort, creds.DestinationUser, creds.DestinationPassword)
+func listOssFiles(repo string, creds Creds) (map[string]bool, error){
 	output := make(map[string]bool)
+	endpoint := os.Getenv("OSS_ENDPOINT")
+	if endpoint == ""{
+		endpoint = "oss-cn-beijing.aliyuncs.com"
+	}
+	ossClient, err := oss.New(endpoint, creds.DestinationUser, creds.DestinationPassword)
 	if err != nil {
 		return output,err
 	}
-
-	bucket, err := client.Bucket(repo)
+	bucket, err := ossClient.Bucket(repo)
 	if err != nil {
 		return output, err
 	}
-
 	lsRes, err := bucket.ListObjects()
 	if err != nil {
 		return output, err
@@ -428,6 +430,24 @@ func listOssFiles(repo string, creds Creds, jumpHostLocalPort string) (map[strin
 		output[object.Key] = false
 	}
 	return output, err
+}
+
+func uploadToOss(destinationRegistry string, fileName string, creds Creds, jumpHostLocalPort string, body io.Reader) error{
+	endpoint := os.Getenv("OSS_ENDPOINT")
+	fmt.Println("Uploading " + fileName + " to " + destinationRegistry)
+	if endpoint == ""{
+		endpoint = "oss-cn-beijing.aliyuncs.com"
+	}
+	ossClient, err := oss.New(endpoint, creds.DestinationUser, creds.DestinationPassword)
+	if err != nil {
+		return err
+	}
+	bucket, err := ossClient.Bucket(destinationRegistry)
+	if err != nil {
+		return err
+	}
+	err = bucket.PutObject(fileName, body)
+	return err
 }
 
 func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string, helmCdnDomain string, jumpHostLocalPort string) {
@@ -449,14 +469,14 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			panic(err)
 		}
 	} else if destinationRegistryType == "oss" {
-		destinationBinariesList, err = listOssFiles(repo, creds, jumpHostLocalPort)
+		destinationBinariesList, err = listOssFiles(destinationRegistry, creds)
 		if err != nil {
 			panic(err)
 		}
 	}
 	for fileName, fileIsDir := range sourceBinariesList {
 		if fileIsDir {
-			replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileName, helmCdnDomain)
+			replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileName, helmCdnDomain, "")
 		} else {
 			fileUrl := "http://" + sourceRegistry + "/artifactory/" + repo + "/" + fileName
 			fileFound := false
@@ -482,6 +502,13 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 				} else if destinationRegistryType == "artifactory" {
 					err := uploadToArtifactory(destinationRegistry, repo, fileName, creds.DestinationUser, creds.DestinationPassword, body)
 					if err != nil {
+						panic(err)
+					}
+				} else if destinationRegistryType == "oss"{
+					ss := strings.Split(fileName, "/")
+					fileNameWithoutRootSlash := strings.Join(ss[1:], "/")
+					err := uploadToOss(destinationRegistry, fileNameWithoutRootSlash, creds, jumpHostLocalPort, body)
+					if err != nil{
 						panic(err)
 					}
 				}
@@ -575,9 +602,6 @@ func main() {
 	jumpHostKey := os.Getenv("JUMP_HOST_KEY")
 	jumpHostDestination := os.Getenv("JUMP_HOST_DESTINATION")
 	jumpHostLocalPort := os.Getenv("JUMP_HOST_LOCAL_PORT")
-	if destinationRegistryType != "s3" && destinationRegistryType != "artifactory" && destinationRegistryType != "oss"{
-		panic("unknown or empty DESTINATION_REGISTRY_TYPE")
-	}
 	if jumpHostName != ""{
 		go setupJumpHost(jumpHostName, jumpHostUser, jumpHostKey, jumpHostDestination, jumpHostLocalPort)
 	}
@@ -592,6 +616,9 @@ func main() {
 		fmt.Println("Replicating docker images repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry)
 		replicateDocker(creds, sourceRegistry, destinationRegistry, imageFilter)
 	} else if artifactType == "binary" {
+		if destinationRegistryType != "s3" && destinationRegistryType != "artifactory" && destinationRegistryType != "oss"{
+			panic("unknown or empty DESTINATION_REGISTRY_TYPE")
+		}
 		fmt.Println("replicating binaries repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry + " S3 bucket")
 		if helmCdnDomain != "" {
 			fmt.Println("Helm CDN domain: " + helmCdnDomain)

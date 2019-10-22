@@ -21,7 +21,10 @@ import (
 	"net"
 	"golang.org/x/crypto/ssh"
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
+	"time"
 )
+
+var ossProxyRunning bool
 
 type Creds struct {
 	SourceUser          string
@@ -414,6 +417,7 @@ func listOssFiles(repo string, creds Creds) (map[string]bool, error){
 	if endpoint == ""{
 		endpoint = "oss-cn-beijing.aliyuncs.com"
 	}
+
 	ossClient, err := oss.New(endpoint, creds.DestinationUser, creds.DestinationPassword)
 	if err != nil {
 		return output,err
@@ -432,12 +436,83 @@ func listOssFiles(repo string, creds Creds) (map[string]bool, error){
 	return output, err
 }
 
-func uploadToOss(destinationRegistry string, fileName string, creds Creds, jumpHostLocalPort string, body io.Reader) error{
-	endpoint := os.Getenv("OSS_ENDPOINT")
-	fmt.Println("Uploading " + fileName + " to " + destinationRegistry)
-	if endpoint == ""{
-		endpoint = "oss-cn-beijing.aliyuncs.com"
+func handleClient(client net.Conn, remote net.Conn) {
+	defer client.Close()
+	chDone := make(chan bool)
+
+	// Start remote -> local data transfer
+	go func() {
+		_, err := io.Copy(client, remote)
+		if err != nil {
+			panic(err)
+		}
+		chDone <- true
+	}()
+
+	// Start local -> remote data transfer
+	go func() {
+		_, err := io.Copy(remote, client)
+		if err != nil {
+			panic(err)
+		}
+		chDone <- true
+	}()
+
+	<-chDone
+}
+
+func setupJumpHost(endpoint string, jumpHostLocalPort string){
+	fmt.Println("setupJumpHost")
+	jumpHostName := os.Getenv("JUMP_HOST_NAME")
+	jumpHostUser := os.Getenv("JUMP_HOST_USER")
+	jumpHostKey := os.Getenv("JUMP_HOST_KEY")
+	jumpHostDestination := os.Getenv("JUMP_HOST_DESTINATION")
+	if jumpHostDestination == ""{
+		jumpHostDestination = "oss-cn-beijing.aliyuncs.com:80"
 	}
+	privateKeyContent, err := ioutil.ReadFile(jumpHostKey)
+	if err != nil {
+		panic(err)
+	}
+	privateKey, err := ssh.ParsePrivateKey(privateKeyContent)
+	if err != nil{
+		panic(err)
+	}
+	config := ssh.ClientConfig{
+		User: jumpHostUser,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(privateKey),
+		},
+		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+			return nil
+		},
+	}
+	conn, err := ssh.Dial("tcp", jumpHostName, &config)
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+	remote, err := conn.Dial("tcp", jumpHostDestination)
+	if err != nil {
+		panic(err)
+	}
+	defer remote.Close()
+	local, err := net.Listen("tcp", "127.0.0.1:"+jumpHostLocalPort)
+	if err != nil {
+		panic(err)
+	}
+	defer local.Close()
+	fmt.Println("Listening on 127.0.0.1:" + jumpHostLocalPort)
+	for {
+		client, err := local.Accept()
+		if err != nil {
+			panic(err)
+		}
+		handleClient(client, remote)
+	}
+}
+
+func uploadToOss(destinationRegistry string, fileName string, creds Creds, body io.Reader, jumpHostLocalPort string, endpoint string) error{
 	ossClient, err := oss.New(endpoint, creds.DestinationUser, creds.DestinationPassword)
 	if err != nil {
 		return err
@@ -446,14 +521,16 @@ func uploadToOss(destinationRegistry string, fileName string, creds Creds, jumpH
 	if err != nil {
 		return err
 	}
+	fmt.Println("Uploading " + fileName + " to " + destinationRegistry)
 	err = bucket.PutObject(fileName, body)
 	return err
 }
 
-func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string, helmCdnDomain string, jumpHostLocalPort string) {
+func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string, helmCdnDomain string) {
 	fmt.Println("Processing repo " + repo)
 	var replicatedArtifacts uint = 0
 	var destinationBinariesList map[string]bool
+	var jumpHostLocalPort, endpoint string
 	sourceBinariesList, err := listArtifactoryFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
 		panic(err)
@@ -469,6 +546,19 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			panic(err)
 		}
 	} else if destinationRegistryType == "oss" {
+		jumpHostLocalPort = os.Getenv("JUMP_HOST_LOCAL_PORT")
+		if jumpHostLocalPort == ""{
+			jumpHostLocalPort = "6969"
+		}
+		endpoint = os.Getenv("OSS_ENDPOINT")
+		if endpoint == ""{
+			endpoint = "localhost:" + jumpHostLocalPort
+		}
+		if !ossProxyRunning {
+			go setupJumpHost(endpoint, jumpHostLocalPort)
+			ossProxyRunning = true
+			time.Sleep(2)
+		}
 		destinationBinariesList, err = listOssFiles(destinationRegistry, creds)
 		if err != nil {
 			panic(err)
@@ -476,7 +566,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 	}
 	for fileName, fileIsDir := range sourceBinariesList {
 		if fileIsDir {
-			replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileName, helmCdnDomain, "")
+			replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileName, helmCdnDomain)
 		} else {
 			fileUrl := "http://" + sourceRegistry + "/artifactory/" + repo + "/" + fileName
 			fileFound := false
@@ -507,7 +597,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 				} else if destinationRegistryType == "oss"{
 					ss := strings.Split(fileName, "/")
 					fileNameWithoutRootSlash := strings.Join(ss[1:], "/")
-					err := uploadToOss(destinationRegistry, fileNameWithoutRootSlash, creds, jumpHostLocalPort, body)
+					err := uploadToOss(destinationRegistry, fileNameWithoutRootSlash, creds, body, jumpHostLocalPort, endpoint)
 					if err != nil{
 						panic(err)
 					}
@@ -517,71 +607,6 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 		}
 	}
 	fmt.Printf("%d artifacts copied\n", replicatedArtifacts)
-}
-
-func handleClient(client net.Conn, remote net.Conn) {
-	defer client.Close()
-	chDone := make(chan bool)
-
-	// Start remote -> local data transfer
-	go func() {
-		_, err := io.Copy(client, remote)
-		if err != nil {
-			panic(err)
-		}
-		chDone <- true
-	}()
-
-	// Start local -> remote data transfer
-	go func() {
-		_, err := io.Copy(remote, client)
-		if err != nil {
-			panic(err)
-		}
-		chDone <- true
-	}()
-
-	<-chDone
-}
-
-func setupJumpHost(jumpHostName string, jumpHostUser string, jumpHostKey string, jumpHostDestination string, jumpHostLocalPort string){
-	privateKeyContent, err := ioutil.ReadFile(jumpHostKey)
-	if err != nil {
-		panic(err)
-	}
-	privateKey, err := ssh.ParsePrivateKey(privateKeyContent)
-	if err != nil{
-		panic(err)
-	}
-	config := ssh.ClientConfig{
-		User: jumpHostUser,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(privateKey),
-		},
-	}
-	conn, err := ssh.Dial("tcp", jumpHostName, &config)
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-	remote, err := conn.Dial("tcp", jumpHostDestination)
-	if err != nil {
-		panic(err)
-	}
-	defer remote.Close()
-	local, err := net.Listen("tcp", "127.0.0.1:"+jumpHostLocalPort)
-	if err != nil {
-		panic(err)
-	}
-	defer local.Close()
-	for {
-		client, err := local.Accept()
-		if err != nil {
-			panic(err)
-		}
-		handleClient(client, remote)
-	}
-	
 }
 
 func main() {
@@ -597,14 +622,6 @@ func main() {
 	artifactType := os.Getenv("ARTIFACT_TYPE")
 	destinationRegistryType := os.Getenv("DESTINATION_REGISTRY_TYPE")
 	helmCdnDomain := os.Getenv("HELM_CDN_DOMAIN")
-	jumpHostName := os.Getenv("JUMP_HOST_NAME")
-	jumpHostUser := os.Getenv("JUMP_HOST_USER")
-	jumpHostKey := os.Getenv("JUMP_HOST_KEY")
-	jumpHostDestination := os.Getenv("JUMP_HOST_DESTINATION")
-	jumpHostLocalPort := os.Getenv("JUMP_HOST_LOCAL_PORT")
-	if jumpHostName != ""{
-		go setupJumpHost(jumpHostName, jumpHostUser, jumpHostKey, jumpHostDestination, jumpHostLocalPort)
-	}
 	creds := Creds{
 		SourceUser:          os.Getenv("SOURCE_USER"),
 		SourcePassword:      os.Getenv("SOURCE_PASSWORD"),
@@ -623,7 +640,7 @@ func main() {
 		if helmCdnDomain != "" {
 			fmt.Println("Helm CDN domain: " + helmCdnDomain)
 		}
-		replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, helmCdnDomain, jumpHostLocalPort)
+		replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, helmCdnDomain)
 	} else {
 		panic("unknown or empty ARTIFACT_TYPE")
 	}

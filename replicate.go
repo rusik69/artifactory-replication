@@ -12,16 +12,17 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
+	"github.com/loqutus/aliyun-oss-go-sdk/oss"
+	"golang.org/x/crypto/ssh"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
-	"net"
-	"golang.org/x/crypto/ssh"
-	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"time"
+	"github.com/aws/aws-sdk-go/service/ecr"
 )
 
 var ossProxyRunning bool
@@ -233,13 +234,25 @@ func deleteImage(imageName string) error {
 	return err
 }
 
-func doReplicateDocker(image ImageToReplicate, creds Creds) error {
+func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryType string, repoFound bool) error {
 	destinationImage := image.DestinationRegistry + "/" + image.DestinationImage + ":" + image.DestinationTag
 	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag
 	fmt.Printf("%s -> %s\n", sourceImage, destinationImage)
 	err := pullImage(image, creds)
 	if err != nil {
 		return err
+	}
+	if destinationRegistryType == "aws" && repoFound == false {
+		input := ecr.CreateRepositoryInput{
+			RepositoryName : &image.DestinationImage,
+		}
+		sess, _ := session.NewSession(&aws.Config{})
+		svc := ecr.New(sess)
+		output, err := svc.CreateRepository(&input)
+		if err != nil{
+			fmt.Println(output)
+			return err
+		}
 	}
 	err = pushImage(image, creds)
 	if err != nil {
@@ -256,7 +269,7 @@ func doReplicateDocker(image ImageToReplicate, creds Creds) error {
 	return nil
 }
 
-func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry string, imageFilter string) {
+func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry string, imageFilter string, destinationRegistryType string) {
 	var copiedArtifacts uint = 0
 	sourceRepos, err := GetRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
@@ -310,7 +323,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 			}
 			if !repoFound {
 				fmt.Println("Repo not found: " + sourceRepo)
-				err := doReplicateDocker(image, creds)
+				err := doReplicateDocker(image, creds, destinationRegistryType, repoFound)
 				if err != nil {
 					panic(err)
 				}
@@ -332,7 +345,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 					continue
 				} else {
 					fmt.Println("Not found image tag: " + sourceRepo + ":" + sourceTag)
-					err := doReplicateDocker(image, creds)
+					err := doReplicateDocker(image, creds, destinationRegistryType, repoFound)
 					if err != nil {
 						panic(err)
 					}
@@ -411,17 +424,17 @@ func uploadToArtifactory(destinationRegistry string, repo string, destinationFil
 	return err
 }
 
-func listOssFiles(repo string, creds Creds) (map[string]bool, error){
+func listOssFiles(repo string, creds Creds) (map[string]bool, error) {
 	output := make(map[string]bool)
 	endpoint := os.Getenv("OSS_ENDPOINT")
-	if endpoint == ""{
+	if endpoint == "" {
 		endpoint = "oss-cn-beijing.aliyuncs.com"
 	}
-
 	ossClient, err := oss.New(endpoint, creds.DestinationUser, creds.DestinationPassword)
 	if err != nil {
-		return output,err
+		return output, err
 	}
+	fmt.Println(repo)
 	bucket, err := ossClient.Bucket(repo)
 	if err != nil {
 		return output, err
@@ -461,13 +474,13 @@ func handleClient(client net.Conn, remote net.Conn) {
 	<-chDone
 }
 
-func setupJumpHost(endpoint string, jumpHostLocalPort string){
+func setupJumpHost(endpoint string, jumpHostLocalPort string) {
 	fmt.Println("setupJumpHost")
 	jumpHostName := os.Getenv("JUMP_HOST_NAME")
 	jumpHostUser := os.Getenv("JUMP_HOST_USER")
 	jumpHostKey := os.Getenv("JUMP_HOST_KEY")
 	jumpHostDestination := os.Getenv("JUMP_HOST_DESTINATION")
-	if jumpHostDestination == ""{
+	if jumpHostDestination == "" {
 		jumpHostDestination = "oss-cn-beijing.aliyuncs.com:80"
 	}
 	privateKeyContent, err := ioutil.ReadFile(jumpHostKey)
@@ -475,7 +488,7 @@ func setupJumpHost(endpoint string, jumpHostLocalPort string){
 		panic(err)
 	}
 	privateKey, err := ssh.ParsePrivateKey(privateKeyContent)
-	if err != nil{
+	if err != nil {
 		panic(err)
 	}
 	config := ssh.ClientConfig{
@@ -512,7 +525,7 @@ func setupJumpHost(endpoint string, jumpHostLocalPort string){
 	}
 }
 
-func uploadToOss(destinationRegistry string, fileName string, creds Creds, body io.Reader, jumpHostLocalPort string, endpoint string) error{
+func uploadToOss(destinationRegistry string, fileName string, creds Creds, body io.Reader, jumpHostLocalPort string, endpoint string) error {
 	ossClient, err := oss.New(endpoint, creds.DestinationUser, creds.DestinationPassword)
 	if err != nil {
 		return err
@@ -547,17 +560,17 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 		}
 	} else if destinationRegistryType == "oss" {
 		jumpHostLocalPort = os.Getenv("JUMP_HOST_LOCAL_PORT")
-		if jumpHostLocalPort == ""{
+		if jumpHostLocalPort == "" {
 			jumpHostLocalPort = "6969"
 		}
 		endpoint = os.Getenv("OSS_ENDPOINT")
-		if endpoint == ""{
+		if endpoint == "" {
 			endpoint = "localhost:" + jumpHostLocalPort
 		}
 		if !ossProxyRunning {
 			go setupJumpHost(endpoint, jumpHostLocalPort)
 			ossProxyRunning = true
-			time.Sleep(2)
+			time.Sleep(5)
 		}
 		destinationBinariesList, err = listOssFiles(destinationRegistry, creds)
 		if err != nil {
@@ -594,11 +607,11 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 					if err != nil {
 						panic(err)
 					}
-				} else if destinationRegistryType == "oss"{
+				} else if destinationRegistryType == "oss" {
 					ss := strings.Split(fileName, "/")
 					fileNameWithoutRootSlash := strings.Join(ss[1:], "/")
 					err := uploadToOss(destinationRegistry, fileNameWithoutRootSlash, creds, body, jumpHostLocalPort, endpoint)
-					if err != nil{
+					if err != nil {
 						panic(err)
 					}
 				}
@@ -631,9 +644,16 @@ func main() {
 
 	if artifactType == "docker" {
 		fmt.Println("Replicating docker images repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry)
-		replicateDocker(creds, sourceRegistry, destinationRegistry, imageFilter)
+		if destinationRegistryType != "azure" && destinationRegistry != "aws" {
+			if destinationRegistryType == "" {
+				destinationRegistryType = "azure"
+			} else {
+				panic("unknown or empty DESTINATION_REGISTRY_TYPE")
+			}
+		}
+		replicateDocker(creds, sourceRegistry, destinationRegistry, imageFilter, destinationRegistryType)
 	} else if artifactType == "binary" {
-		if destinationRegistryType != "s3" && destinationRegistryType != "artifactory" && destinationRegistryType != "oss"{
+		if destinationRegistryType != "s3" && destinationRegistryType != "artifactory" && destinationRegistryType != "oss" {
 			panic("unknown or empty DESTINATION_REGISTRY_TYPE")
 		}
 		fmt.Println("replicating binaries repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry + " S3 bucket")

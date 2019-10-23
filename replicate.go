@@ -428,13 +428,12 @@ func listOssFiles(repo string, creds Creds) (map[string]bool, error) {
 	output := make(map[string]bool)
 	endpoint := os.Getenv("OSS_ENDPOINT")
 	if endpoint == "" {
-		endpoint = "oss-cn-beijing.aliyuncs.com"
+		endpoint = repo + ".oss-cn-beijing.aliyuncs.com"
 	}
 	ossClient, err := oss.New(endpoint, creds.DestinationUser, creds.DestinationPassword)
 	if err != nil {
 		return output, err
 	}
-	fmt.Println(repo)
 	bucket, err := ossClient.Bucket(repo)
 	if err != nil {
 		return output, err

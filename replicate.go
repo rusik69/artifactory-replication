@@ -433,7 +433,6 @@ func listOssFiles(repo string, creds Creds, endpoint string) (map[string]bool, e
 	}
 	lsRes, err := bucket.ListObjects()
 	if err != nil {
-		fmt.Println(3)
 		return output, err
 	}
 	for _, object := range lsRes.Objects {

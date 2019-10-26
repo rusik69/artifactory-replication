@@ -13,15 +13,12 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/loqutus/aliyun-oss-go-sdk/oss"
-	"golang.org/x/crypto/ssh"
 	"io"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
-	"time"
 	"github.com/aws/aws-sdk-go/service/ecr"
 )
 
@@ -448,83 +445,11 @@ func listOssFiles(repo string, creds Creds) (map[string]bool, error) {
 	return output, err
 }
 
-func handleClient(client net.Conn, remote net.Conn) {
-	defer client.Close()
-	chDone := make(chan bool)
-
-	// Start remote -> local data transfer
-	go func() {
-		_, err := io.Copy(client, remote)
-		if err != nil {
-			panic(err)
-		}
-		chDone <- true
-	}()
-
-	// Start local -> remote data transfer
-	go func() {
-		_, err := io.Copy(remote, client)
-		if err != nil {
-			panic(err)
-		}
-		chDone <- true
-	}()
-
-	<-chDone
-}
-
-func setupJumpHost(endpoint string, jumpHostLocalPort string) {
-	fmt.Println("setupJumpHost")
-	jumpHostName := os.Getenv("JUMP_HOST_NAME")
-	jumpHostUser := os.Getenv("JUMP_HOST_USER")
-	jumpHostKey := os.Getenv("JUMP_HOST_KEY")
-	jumpHostDestination := os.Getenv("JUMP_HOST_DESTINATION")
-	if jumpHostDestination == "" {
-		jumpHostDestination = "oss-cn-beijing.aliyuncs.com:80"
+func uploadToOss(destinationRegistry string, fileName string, creds Creds, body io.Reader, jumpHostLocalPort string) error {
+	endpoint := os.Getenv("OSS_ENDPOINT")
+	if endpoint == "" {
+		endpoint = destinationRegistry + ".oss-cn-beijing.aliyuncs.com"
 	}
-	privateKeyContent, err := ioutil.ReadFile(jumpHostKey)
-	if err != nil {
-		panic(err)
-	}
-	privateKey, err := ssh.ParsePrivateKey(privateKeyContent)
-	if err != nil {
-		panic(err)
-	}
-	config := ssh.ClientConfig{
-		User: jumpHostUser,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(privateKey),
-		},
-		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
-			return nil
-		},
-	}
-	conn, err := ssh.Dial("tcp", jumpHostName, &config)
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-	remote, err := conn.Dial("tcp", jumpHostDestination)
-	if err != nil {
-		panic(err)
-	}
-	defer remote.Close()
-	local, err := net.Listen("tcp", "127.0.0.1:"+jumpHostLocalPort)
-	if err != nil {
-		panic(err)
-	}
-	defer local.Close()
-	fmt.Println("Listening on 127.0.0.1:" + jumpHostLocalPort)
-	for {
-		client, err := local.Accept()
-		if err != nil {
-			panic(err)
-		}
-		handleClient(client, remote)
-	}
-}
-
-func uploadToOss(destinationRegistry string, fileName string, creds Creds, body io.Reader, jumpHostLocalPort string, endpoint string) error {
 	ossClient, err := oss.New(endpoint, creds.DestinationUser, creds.DestinationPassword)
 	if err != nil {
 		return err
@@ -542,7 +467,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 	fmt.Println("Processing repo " + repo)
 	var replicatedArtifacts uint = 0
 	var destinationBinariesList map[string]bool
-	var jumpHostLocalPort, endpoint string
+	var jumpHostLocalPort string
 	sourceBinariesList, err := listArtifactoryFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
 		panic(err)
@@ -558,19 +483,6 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			panic(err)
 		}
 	} else if destinationRegistryType == "oss" {
-		jumpHostLocalPort = os.Getenv("JUMP_HOST_LOCAL_PORT")
-		if jumpHostLocalPort == "" {
-			jumpHostLocalPort = "6969"
-		}
-		endpoint = os.Getenv("OSS_ENDPOINT")
-		if endpoint == "" {
-			endpoint = "localhost:" + jumpHostLocalPort
-		}
-		if !ossProxyRunning {
-			go setupJumpHost(endpoint, jumpHostLocalPort)
-			ossProxyRunning = true
-			time.Sleep(5)
-		}
 		destinationBinariesList, err = listOssFiles(destinationRegistry, creds)
 		if err != nil {
 			panic(err)
@@ -609,7 +521,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 				} else if destinationRegistryType == "oss" {
 					ss := strings.Split(fileName, "/")
 					fileNameWithoutRootSlash := strings.Join(ss[1:], "/")
-					err := uploadToOss(destinationRegistry, fileNameWithoutRootSlash, creds, body, jumpHostLocalPort, endpoint)
+					err := uploadToOss(destinationRegistry, fileNameWithoutRootSlash, creds, body, jumpHostLocalPort)
 					if err != nil {
 						panic(err)
 					}

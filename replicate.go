@@ -514,7 +514,8 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 						panic(err)
 					}
 				} else if destinationRegistryType == "oss" {
-					err := uploadToOss(destinationRegistry, fileName, creds, body, endpoint)
+					destinationFileName = strings.TrimPrefix(destinationFileName, "/")
+					err := uploadToOss(destinationRegistry, destinationFileName, creds, body, endpoint)
 					if err != nil {
 						panic(err)
 					}
@@ -560,7 +561,7 @@ func main() {
 		if destinationRegistryType != "s3" && destinationRegistryType != "artifactory" && destinationRegistryType != "oss" {
 			panic("unknown or empty DESTINATION_REGISTRY_TYPE")
 		}
-		fmt.Println("replicating binaries repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry + " bucket")
+		fmt.Println("replicating binary repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry + " bucket")
 		if helmCdnDomain != "" {
 			fmt.Println("Helm CDN domain: " + helmCdnDomain)
 		}

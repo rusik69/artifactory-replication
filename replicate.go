@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
-	"github.com/loqutus/aliyun-oss-go-sdk/oss"
+	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -421,12 +421,8 @@ func uploadToArtifactory(destinationRegistry string, repo string, destinationFil
 	return err
 }
 
-func listOssFiles(repo string, creds Creds) (map[string]bool, error) {
+func listOssFiles(repo string, creds Creds, endpoint string) (map[string]bool, error) {
 	output := make(map[string]bool)
-	endpoint := os.Getenv("OSS_ENDPOINT")
-	if endpoint == "" {
-		endpoint = repo + ".oss-cn-beijing.aliyuncs.com"
-	}
 	ossClient, err := oss.New(endpoint, creds.DestinationUser, creds.DestinationPassword)
 	if err != nil {
 		return output, err
@@ -437,19 +433,16 @@ func listOssFiles(repo string, creds Creds) (map[string]bool, error) {
 	}
 	lsRes, err := bucket.ListObjects()
 	if err != nil {
+		fmt.Println(3)
 		return output, err
 	}
 	for _, object := range lsRes.Objects {
 		output[object.Key] = false
 	}
-	return output, err
+	return output, nil
 }
 
-func uploadToOss(destinationRegistry string, fileName string, creds Creds, body io.Reader, jumpHostLocalPort string) error {
-	endpoint := os.Getenv("OSS_ENDPOINT")
-	if endpoint == "" {
-		endpoint = destinationRegistry + ".oss-cn-beijing.aliyuncs.com"
-	}
+func uploadToOss(destinationRegistry string, fileName string, creds Creds, body io.Reader, endpoint string) error {
 	ossClient, err := oss.New(endpoint, creds.DestinationUser, creds.DestinationPassword)
 	if err != nil {
 		return err
@@ -467,8 +460,11 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 	fmt.Println("Processing repo " + repo)
 	var replicatedArtifacts uint = 0
 	var destinationBinariesList map[string]bool
-	var jumpHostLocalPort string
 	sourceBinariesList, err := listArtifactoryFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
+	endpoint := os.Getenv("OSS_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "oss-cn-beijing.aliyuncs.com"
+	}
 	if err != nil {
 		panic(err)
 	}
@@ -483,7 +479,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			panic(err)
 		}
 	} else if destinationRegistryType == "oss" {
-		destinationBinariesList, err = listOssFiles(destinationRegistry, creds)
+		destinationBinariesList, err = listOssFiles(destinationRegistry, creds, endpoint)
 		if err != nil {
 			panic(err)
 		}
@@ -519,9 +515,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 						panic(err)
 					}
 				} else if destinationRegistryType == "oss" {
-					ss := strings.Split(fileName, "/")
-					fileNameWithoutRootSlash := strings.Join(ss[1:], "/")
-					err := uploadToOss(destinationRegistry, fileNameWithoutRootSlash, creds, body, jumpHostLocalPort)
+					err := uploadToOss(destinationRegistry, fileName, creds, body, endpoint)
 					if err != nil {
 						panic(err)
 					}

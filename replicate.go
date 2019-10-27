@@ -6,20 +6,21 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/ecr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
-	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
-	"github.com/aws/aws-sdk-go/service/ecr"
+	"time"
 )
 
 var ossProxyRunning bool
@@ -241,12 +242,12 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 	}
 	if destinationRegistryType == "aws" && repoFound == false {
 		input := ecr.CreateRepositoryInput{
-			RepositoryName : &image.DestinationImage,
+			RepositoryName: &image.DestinationImage,
 		}
 		sess, _ := session.NewSession(&aws.Config{})
 		svc := ecr.New(sess)
 		output, err := svc.CreateRepository(&input)
-		if err != nil{
+		if err != nil {
 			fmt.Println(output)
 			return err
 		}
@@ -368,43 +369,45 @@ func ListS3Files(S3Bucket string) (map[string]bool, error) {
 	return output, err
 }
 
-func downloadFromArtifactory(fileUrl string, destinationRegistry string, helmCdnDomain string) io.Reader {
+func downloadFromArtifactory(fileUrl string, destinationRegistry string, helmCdnDomain string) bytes.Buffer {
 	fmt.Println("Downloading " + fileUrl)
 	resp, err := http.Get(fileUrl)
 	if err != nil {
 		panic(err)
 	}
+	defer resp.Body.Close()
 	matched, err := regexp.MatchString("/index.yaml$", fileUrl)
 	if err != nil {
 		panic(err)
 	}
-	var binaryToWrite io.Reader
+	var binaryToWrite bytes.Buffer
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		panic(err)
+	}
 	if matched && helmCdnDomain != "" {
 		linkToReplace, err := regexp.Compile("(https?://.*?/artifactory/.*?/)")
 		if err != nil {
 			panic(err)
 		}
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
+		binaryToWrite.Write(linkToReplace.ReplaceAll(body, []byte("https://"+helmCdnDomain+"/")))
+	} else {
+		_, err := binaryToWrite.Write(body)
+		if err != nil{
 			panic(err)
 		}
-		var tmpBinaryToWrite bytes.Buffer
-		tmpBinaryToWrite.Write(linkToReplace.ReplaceAll(body, []byte("https://"+helmCdnDomain+"/")))
-		binaryToWrite = &tmpBinaryToWrite
-	} else {
-		binaryToWrite = resp.Body
 	}
 	return binaryToWrite
 }
 
-func uploadToS3(destinationRegistry string, destinationFileName string, body io.Reader) error {
+func uploadToS3(destinationRegistry string, destinationFileName string, body bytes.Buffer) error {
 	sess, err := session.NewSession(&aws.Config{})
 	uploader := s3manager.NewUploader(sess)
 	fmt.Println("Uploading " + destinationFileName + " to " + destinationRegistry)
 	_, err = uploader.Upload(&s3manager.UploadInput{
 		Bucket: aws.String(destinationRegistry),
 		Key:    aws.String(destinationFileName),
-		Body:   body})
+		Body:   &body})
 	return err
 }
 
@@ -451,7 +454,18 @@ func uploadToOss(destinationRegistry string, fileName string, creds Creds, body 
 		return err
 	}
 	fmt.Println("Uploading " + fileName + " to " + destinationRegistry)
-	err = bucket.PutObject(fileName, body)
+	attempts := 5
+	for i := 0; i < attempts; i += 1 {
+		if i >= 1 {
+			fmt.Println(err)
+			fmt.Printf("Attempt: %d\n", i)
+		}
+		err = bucket.PutObject(fileName, body)
+		if err == nil {
+			break
+		}
+		time.Sleep(5 * time.Second)
+	}
 	return err
 }
 
@@ -509,13 +523,13 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 						panic(err)
 					}
 				} else if destinationRegistryType == "artifactory" {
-					err := uploadToArtifactory(destinationRegistry, repo, fileName, creds.DestinationUser, creds.DestinationPassword, body)
+					err := uploadToArtifactory(destinationRegistry, repo, fileName, creds.DestinationUser, creds.DestinationPassword, &body)
 					if err != nil {
 						panic(err)
 					}
 				} else if destinationRegistryType == "oss" {
 					destinationFileName = strings.TrimPrefix(destinationFileName, "/")
-					err := uploadToOss(destinationRegistry, destinationFileName, creds, body, endpoint)
+					err := uploadToOss(destinationRegistry, destinationFileName, creds, &body, endpoint)
 					if err != nil {
 						panic(err)
 					}

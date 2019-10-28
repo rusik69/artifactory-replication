@@ -238,9 +238,6 @@ func deleteImage(imageName string) error {
 }
 
 func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryType string, repoFound bool) error {
-	destinationImage := image.DestinationRegistry + "/" + image.DestinationImage + ":" + image.DestinationTag
-	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag
-	fmt.Printf("%s -> %s\n", sourceImage, destinationImage)
 	err := pullImage(image, creds)
 	if err != nil {
 		return err
@@ -256,7 +253,15 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 			fmt.Println(output)
 			return err
 		}
+	} else if destinationRegistryType == "alicloud" {
+		dockerRepoPrefix := os.Getenv("DOCKER_REPO_PREFIX")
+		if dockerRepoPrefix != "" {
+			image.DestinationImage = dockerRepoPrefix + "/" + image.DestinationImage
+		}
 	}
+	destinationImage := image.DestinationRegistry + "/" + image.DestinationImage + ":" + image.DestinationTag
+	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag
+	fmt.Printf("Replicating: %s -> %s\n", sourceImage, destinationImage)
 	err = pushImage(image, creds)
 	if err != nil {
 		return err
@@ -325,7 +330,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 				DestinationTag:      sourceTag,
 			}
 			if !repoFound {
-				fmt.Println("Repo not found: " + sourceRepo)
+				fmt.Println("Destination repo not found: " + sourceRepo)
 				err := doReplicateDocker(image, creds, destinationRegistryType, repoFound)
 				if err != nil {
 					panic(err)
@@ -347,7 +352,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 				if destinationTagFound {
 					continue
 				} else {
-					fmt.Println("Not found image tag: " + sourceRepo + ":" + sourceTag)
+					fmt.Println("Image tag: " + sourceRepo + ":" + sourceTag + " not found")
 					err := doReplicateDocker(image, creds, destinationRegistryType, repoFound)
 					if err != nil {
 						panic(err)
@@ -572,6 +577,48 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 	fmt.Printf("%d artifacts copied to %s\n", replicatedArtifacts, repo)
 }
 
+func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, artifactType string, destinationRegistryType string) {
+	fmt.Println("Checking " + destinationRegistryType + " repo consistency between " + sourceRegistry + " and " + destinationRegistry)
+	var missingRepos []string
+	var checkFailed bool
+	if destinationRegistryType == "docker" {
+		sourceRepos, err := getRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword)
+		if err != nil {
+			panic(err)
+		}
+		destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword)
+		if err != nil {
+			panic(err)
+		}
+		for _, sourceRepo := range sourceRepos {
+			var destinationRepoFound bool
+			for _, destinationRepo := range destinationRepos {
+				if sourceRepo == destinationRepo {
+					fmt.Println("Repo " + sourceRepo + " found")
+					destinationRepoFound = true
+					break
+				}
+			}
+			if !destinationRepoFound {
+				fmt.Fprintln(os.Stderr, "Repo "+sourceRepo+" NOT found")
+				checkFailed = true
+				missingRepos = append(missingRepos, sourceRepo)
+				break
+			}
+		}
+		if checkFailed {
+			fmt.Fprintln(os.Stderr, "Consistency check failed, missing repos:")
+			for _, missingRepo := range missingRepos {
+				fmt.Fprintln(os.Stderr, missingRepo)
+			}
+			os.Exit(1)
+		} else {
+			fmt.Println("No missing repos found")
+			return
+		}
+	}
+}
+
 func main() {
 	sourceRegistry := os.Getenv("SOURCE_REGISTRY")
 	if sourceRegistry == "" {
@@ -591,10 +638,14 @@ func main() {
 		DestinationUser:     os.Getenv("DESTINATION_USER"),
 		DestinationPassword: os.Getenv("DESTINATION_PASSWORD"),
 	}
-
+	checkReposFlag := os.Getenv("CHECK_REPOS")
+	if checkReposFlag == "true" {
+		checkRepos(sourceRegistry, destinationRegistry, creds, artifactType, destinationRegistryType)
+		os.Exit(0)
+	}
 	if artifactType == "docker" {
 		fmt.Println("Replicating docker images repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry)
-		if destinationRegistryType != "azure" && destinationRegistry != "aws" && destinationRegistry != "aliyun" {
+		if destinationRegistryType != "azure" && destinationRegistryType != "aws" && destinationRegistryType != "alicloud" {
 			if destinationRegistryType == "" {
 				destinationRegistryType = "azure"
 			} else {

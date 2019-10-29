@@ -62,6 +62,7 @@ func getRepos(dockerRegistry string, user string, pass string) ([]string, error)
 	type res struct {
 		Repositories []string
 	}
+	fmt.Println(string([]byte(body)))
 	var b res
 	err = json.Unmarshal(body, &b)
 	if err != nil {

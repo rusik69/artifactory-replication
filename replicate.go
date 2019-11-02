@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -59,6 +60,7 @@ func getRepos(dockerRegistry string, user string, pass string) ([]string, error)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println(string([]byte(body)))
 	type res struct {
 		Repositories []string
 	}
@@ -258,7 +260,7 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 			return err
 		}
 		*repoFound = true
-	} else if destinationRegistryType == "alicloud" {
+	} else if destinationRegistryType == "alicloud" || destinationRegistryType == "google" {
 		dockerRepoPrefix := os.Getenv("DOCKER_REPO_PREFIX")
 		if dockerRepoPrefix != "" {
 			image.DestinationImage = dockerRepoPrefix + "/" + image.DestinationImage
@@ -651,7 +653,7 @@ func main() {
 	}
 	if artifactType == "docker" {
 		log.Println("Replicating docker images repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry)
-		if destinationRegistryType != "azure" && destinationRegistryType != "aws" && destinationRegistryType != "alicloud" {
+		if destinationRegistryType != "azure" && destinationRegistryType != "aws" && destinationRegistryType != "alicloud" && destinationRegistryType != "google" {
 			if destinationRegistryType == "" {
 				destinationRegistryType = "azure"
 			} else {

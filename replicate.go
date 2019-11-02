@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -60,7 +59,6 @@ func getRepos(dockerRegistry string, user string, pass string) ([]string, error)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(string([]byte(body)))
 	type res struct {
 		Repositories []string
 	}

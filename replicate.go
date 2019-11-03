@@ -144,6 +144,7 @@ func pullImage(image ImageToReplicate, creds Creds) error {
 	if err != nil {
 		return err
 	}
+	defer cli.Close()
 	cli.NegotiateAPIVersion(ctx)
 	if creds.SourceUser != "" || creds.SourcePassword != "" {
 		authConfig := types.AuthConfig{
@@ -181,6 +182,7 @@ func pushImage(image ImageToReplicate, creds Creds) error {
 	if err != nil {
 		return err
 	}
+	defer cli.Close()
 	cli.NegotiateAPIVersion(ctx)
 	err = cli.ImageTag(ctx, sourceImage, destinationImage)
 	if err != nil {

@@ -242,7 +242,7 @@ func deleteImage(imageName string) error {
 	return err
 }
 
-func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryType string, repoFound *bool) error {
+func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryType string, repoFound *bool, dockerRepoPrefix string) error {
 	err := pullImage(image, creds)
 	if err != nil {
 		return err
@@ -261,7 +261,6 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 		}
 		*repoFound = true
 	} else if destinationRegistryType == "alicloud" || destinationRegistryType == "google" {
-		dockerRepoPrefix := os.Getenv("DOCKER_REPO_PREFIX")
 		if dockerRepoPrefix != "" {
 			image.DestinationImage = dockerRepoPrefix + "/" + image.DestinationImage
 		}
@@ -294,6 +293,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	if err != nil {
 		panic(err)
 	}
+	dockerRepoPrefix := os.Getenv("DOCKER_REPO_PREFIX")
 	sourceFilteredRepos := sourceRepos[:0]
 	if imageFilter != "" {
 		for _, repo := range sourceRepos {
@@ -321,6 +321,9 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 		}
 		repoFound := false
 		for _, destinationRepo := range destinationFilteredRepos {
+			if destinationRegistryType == "google" {
+				destinationRepo = strings.TrimPrefix(destinationRepo, dockerRepoPrefix+"/")
+			}
 			if sourceRepo == destinationRepo {
 				repoFound = true
 				log.Println("Found repo: " + sourceRepo)
@@ -338,14 +341,18 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 			}
 			if !repoFound {
 				log.Println("Destination repo not found: " + sourceRepo)
-				err := doReplicateDocker(image, creds, destinationRegistryType, &repoFound)
+				err := doReplicateDocker(image, creds, destinationRegistryType, &repoFound, dockerRepoPrefix)
 				if err != nil {
 					panic(err)
 				}
 				copiedArtifacts += 1
 			} else {
 				destinationTagFound := false
-				destinationTags, err := listTags(destinationRegistry, sourceRepo, creds.DestinationUser, creds.DestinationPassword)
+				destinationRepo := sourceRepo
+				if dockerRepoPrefix != "" {
+					destinationRepo = dockerRepoPrefix + "/" + sourceRepo
+				}
+				destinationTags, err := listTags(destinationRegistry, destinationRepo, creds.DestinationUser, creds.DestinationPassword)
 				if err != nil {
 					panic(err)
 				}
@@ -360,7 +367,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 					continue
 				} else {
 					log.Println("Repo tag: " + sourceRepo + ":" + sourceTag + " not found")
-					err := doReplicateDocker(image, creds, destinationRegistryType, &repoFound)
+					err := doReplicateDocker(image, creds, destinationRegistryType, &repoFound, dockerRepoPrefix)
 					if err != nil {
 						panic(err)
 					}

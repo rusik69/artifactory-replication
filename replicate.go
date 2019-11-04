@@ -203,8 +203,8 @@ func pushImage(image ImageToReplicate, creds Creds) error {
 			log.Println(out)
 			return err
 		}
-		io.Copy(ioutil.Discard, out)
-		//io.Copy(os.Stdout, out)
+		//io.Copy(ioutil.Discard, out)
+		io.Copy(os.Stdout, out)
 		defer out.Close()
 	} else {
 		out, err := cli.ImagePush(ctx, destinationImage, types.ImagePushOptions{})

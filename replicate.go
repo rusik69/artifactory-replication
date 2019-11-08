@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"io/ioutil"
 	"log"
@@ -203,8 +205,14 @@ func pushImage(image ImageToReplicate, creds Creds) error {
 			log.Println(out)
 			return err
 		}
-		//io.Copy(ioutil.Discard, out)
-		io.Copy(os.Stdout, out)
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(out)
+		newStr := buf.String()
+		if strings.Contains(newStr, "errorDetail") {
+			log.Println(creds.DestinationUser)
+			log.Println(creds.DestinationPassword)
+			return errors.New(newStr)
+		}
 		defer out.Close()
 	} else {
 		out, err := cli.ImagePush(ctx, destinationImage, types.ImagePushOptions{})
@@ -256,9 +264,13 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 		svc := ecr.New(sess)
 		output, err := svc.CreateRepository(&input)
 		if err != nil {
-			log.Println(output)
-			return err
+			if !strings.Contains(err.Error(), "already exists") {
+				log.Println("hui")
+				log.Println(output.String())
+				return err
+			}
 		}
+		log.Println("hui2")
 		*repoFound = true
 	} else if destinationRegistryType == "alicloud" || destinationRegistryType == "google" {
 		if dockerRepoPrefix != "" {
@@ -289,10 +301,14 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	if err != nil {
 		panic(err)
 	}
+	log.Println("Found source repos:")
+	log.Println(sourceRepos)
 	destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword)
 	if err != nil {
 		panic(err)
 	}
+	log.Println("Found destination repos:")
+	log.Println(destinationRepos)
 	dockerRepoPrefix := os.Getenv("DOCKER_REPO_PREFIX")
 	sourceFilteredRepos := sourceRepos[:0]
 	if imageFilter != "" {
@@ -633,6 +649,16 @@ func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, 
 	}
 }
 
+func getAwsEcrToken() (string, error) {
+	svc := ecr.New(session.New())
+	input := &ecr.GetAuthorizationTokenInput{}
+	result, err := svc.GetAuthorizationToken(input)
+	if err != nil {
+		return "", err
+	}
+	return *result.AuthorizationData[0].AuthorizationToken, nil
+}
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	sourceRegistry := os.Getenv("SOURCE_REGISTRY")
@@ -660,6 +686,14 @@ func main() {
 	}
 	if artifactType == "docker" {
 		log.Println("Replicating docker images repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry)
+		if destinationRegistryType == "aws" {
+			ECRPassword, err := getAwsEcrToken()
+			if err != nil {
+				panic(err)
+			}
+			creds.DestinationUser = "AWS"
+			creds.DestinationPassword = ECRPassword
+		}
 		if destinationRegistryType != "azure" && destinationRegistryType != "aws" && destinationRegistryType != "alicloud" && destinationRegistryType != "google" {
 			if destinationRegistryType == "" {
 				destinationRegistryType = "azure"

@@ -307,7 +307,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	}
 	log.Println("Found source repos:")
 	log.Println(sourceRepos)
-	log.Println("Getting repos from destination from destination registry: ")
+	log.Println("Getting repos from destination from destination registry: " + destinationRegistry)
 	destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword)
 	if err != nil {
 		panic(err)

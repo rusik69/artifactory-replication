@@ -268,12 +268,10 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 		output, err := svc.CreateRepository(&input)
 		if err != nil {
 			if !strings.Contains(err.Error(), "already exists") {
-				log.Println("hui")
 				log.Println(output.String())
 				return err
 			}
 		}
-		log.Println("hui2")
 		*repoFound = true
 	} else if destinationRegistryType == "alicloud" || destinationRegistryType == "google" {
 		if dockerRepoPrefix != "" {

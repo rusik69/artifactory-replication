@@ -11,6 +11,8 @@ SOURCE_REGISTRY: source docker registry to sync from
 
 DESTINATION_REGISTRY: destination docker registry to sync to
 
+DESTINATION_REGISTRY_TYPE: aws, google or alicloud
+
 IMAGE_FILTER: image path prefix
 
 SOURCE_USER: source registry user, if needed

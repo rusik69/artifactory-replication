@@ -700,6 +700,8 @@ func main() {
 			log.Println("Replicating docker images from " + sourceRegistry + " to " + destinationRegistry)
 		}
 		if destinationRegistryType == "aws" {
+			os.Setenv("AWS_ACCESS_KEY_ID", creds.DestinationUser)
+			os.Setenv("AWS_SECRET_ACCESS_KEY", creds.DestinationPassword)
 			ECRLogin, ECRPassword, err := getAwsEcrToken()
 			if err != nil {
 				panic(err)

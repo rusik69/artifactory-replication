@@ -26,6 +26,7 @@ import (
 )
 
 var ossProxyRunning bool
+var failedDockerPullRepos, failedDockerPushRepos []list
 
 // Creds source/destination credentials
 type Creds struct {
@@ -45,9 +46,9 @@ type ImageToReplicate struct {
 	DestinationTag      string
 }
 
-func getRepos(dockerRegistry string, user string, pass string) ([]string, error) {
+func getRepos(dockerRegistry string, user string, pass string, reposLimit string) ([]string, error) {
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", "https://"+dockerRegistry+"/v2/_catalog?n=1000", nil)
+	req, err := http.NewRequest("GET", "https://"+dockerRegistry+"/v2/_catalog?n="+reposLimit, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -327,15 +328,21 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 
 func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry string, imageFilter string, destinationRegistryType string) {
 	var copiedArtifacts uint = 0
+	var reposLimit string
+	if destinationRegistryType == "google" {
+		reposLimit = "1000"
+	} else {
+		reposLimit = "1000000"
+	}
 	log.Println("Getting repos from source registry: " + sourceRegistry)
-	sourceRepos, err := getRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword)
+	sourceRepos, err := getRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword, reposLimit)
 	if err != nil {
 		panic(err)
 	}
 	log.Println("Found source repos:")
 	log.Println(sourceRepos)
 	log.Println("Getting repos from destination from destination registry: " + destinationRegistry)
-	destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword)
+	destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword, reposLimit)
 	if err != nil {
 		panic(err)
 	}
@@ -644,11 +651,11 @@ func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, 
 	var missingRepos []string
 	var checkFailed bool
 	if destinationRegistryType == "docker" {
-		sourceRepos, err := getRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword)
+		sourceRepos, err := getRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword, "1000")
 		if err != nil {
 			panic(err)
 		}
-		destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword)
+		destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword, "1000")
 		if err != nil {
 			panic(err)
 		}

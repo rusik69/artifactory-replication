@@ -124,6 +124,9 @@ func listTags(dockerRegistry string, image string, user string, pass string) ([]
 	}
 	req.SetBasicAuth(user, pass)
 	resp, err := httpClient.Do(req)
+	if err != nil {
+		panic(err)
+	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -165,15 +168,29 @@ func pullImage(image ImageToReplicate, creds Creds) error {
 		if err != nil {
 			return err
 		}
-		io.Copy(ioutil.Discard, out)
 		defer out.Close()
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(out)
+		newStr := buf.String()
+		if strings.Contains(newStr, "error") || strings.Contains(newStr, "Error") {
+			return errors.New(newStr)
+		}
+		io.Copy(ioutil.Discard, out)
 	} else {
 		out, err := cli.ImagePull(ctx, sourceImage, types.ImagePullOptions{})
 		if err != nil {
 			return err
 		}
-		io.Copy(ioutil.Discard, out)
 		defer out.Close()
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(out)
+		newStr := buf.String()
+		if strings.Contains(newStr, "error") || strings.Contains(newStr, "Error") {
+			log.Println(creds.DestinationUser)
+			log.Println(creds.DestinationPassword)
+			return errors.New(newStr)
+		}
+		io.Copy(ioutil.Discard, out)
 	}
 	return nil
 }
@@ -208,15 +225,13 @@ func pushImage(image ImageToReplicate, creds Creds) error {
 			log.Println(out)
 			return err
 		}
+		defer out.Close()
 		buf := new(bytes.Buffer)
 		buf.ReadFrom(out)
 		newStr := buf.String()
-		if strings.Contains(newStr, "errorDetail") {
-			log.Println(creds.DestinationUser)
-			log.Println(creds.DestinationPassword)
+		if strings.Contains(newStr, "error") || strings.Contains(newStr, "Error") {
 			return errors.New(newStr)
 		}
-		defer out.Close()
 	} else {
 		out, err := cli.ImagePush(ctx, destinationImage, types.ImagePushOptions{})
 		if err != nil {
@@ -224,6 +239,13 @@ func pushImage(image ImageToReplicate, creds Creds) error {
 			return err
 		}
 		defer out.Close()
+		defer out.Close()
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(out)
+		newStr := buf.String()
+		if strings.Contains(newStr, "error") || strings.Contains(newStr, "Error") {
+			return errors.New(newStr)
+		}
 	}
 	return nil
 }
@@ -256,7 +278,9 @@ func deleteImage(imageName string) error {
 func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryType string, repoFound *bool, dockerRepoPrefix string) error {
 	err := pullImage(image, creds)
 	if err != nil {
-		return err
+		log.Println(err)
+		log.Println("Error pulling image, ignoring...")
+		return nil
 	}
 	if destinationRegistryType == "aws" && *repoFound == false {
 		log.Println("Creating destination repo: " + image.DestinationImage)
@@ -280,18 +304,23 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 	}
 	destinationImage := image.DestinationRegistry + "/" + image.DestinationImage + ":" + image.DestinationTag
 	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag
-	log.Printf("Replicating: %s -> %s\n", sourceImage, destinationImage)
 	err = pushImage(image, creds)
 	if err != nil {
-		return err
+		log.Println(err)
+		log.Println("Error pushing image, ignoring...")
+		return nil
 	}
 	err = deleteImage(sourceImage)
 	if err != nil {
-		return err
+		log.Println(err)
+		log.Println("Error deleting image, ignoring...")
+		return nil
 	}
 	err = deleteImage(destinationImage)
 	if err != nil {
-		return err
+		log.Println(err)
+		log.Println("error deleting image, ignoring...")
+		return nil
 	}
 	return nil
 }

@@ -26,7 +26,7 @@ import (
 )
 
 var ossProxyRunning bool
-var failedDockerPullRepos, failedDockerPushRepos []list
+var failedDockerPullRepos, failedDockerPushRepos, failedDockerCleanRepos []string
 
 // Creds source/destination credentials
 type Creds struct {
@@ -281,6 +281,7 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 	if err != nil {
 		log.Println(err)
 		log.Println("Error pulling image, ignoring...")
+		failedDockerPullRepos = append(failedDockerPullRepos, image.SourceImage+":"+image.SourceTag)
 		return nil
 	}
 	if destinationRegistryType == "aws" && *repoFound == false {
@@ -309,18 +310,21 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 	if err != nil {
 		log.Println(err)
 		log.Println("Error pushing image, ignoring...")
+		failedDockerPushRepos = append(failedDockerPushRepos, image.DestinationImage+":"+image.DestinationTag)
 		return nil
 	}
 	err = deleteImage(sourceImage)
 	if err != nil {
 		log.Println(err)
 		log.Println("Error deleting image, ignoring...")
+		failedDockerCleanRepos = append(failedDockerCleanRepos, image.SourceImage+":"+image.SourceTag)
 		return nil
 	}
 	err = deleteImage(destinationImage)
 	if err != nil {
 		log.Println(err)
 		log.Println("error deleting image, ignoring...")
+		failedDockerCleanRepos = append(failedDockerCleanRepos, image.DestinationImage+":"+image.DestinationTag)
 		return nil
 	}
 	return nil
@@ -759,6 +763,22 @@ func main() {
 			}
 		}
 		replicateDocker(creds, sourceRegistry, destinationRegistry, imageFilter, destinationRegistryType)
+		if len(failedDockerPushRepos) != 0 || len(failedDockerPullRepos) != 0 || len(failedDockerCleanRepos) != 0 {
+			log.Println("Failed docker operations:")
+			if len(failedDockerPushRepos) != 0 {
+				log.Println("Docker push failed:")
+				log.Println(failedDockerPushRepos)
+			}
+			if len(failedDockerPullRepos) != 0 {
+				log.Println("Docker pull failed:")
+				log.Println(failedDockerPullRepos)
+			}
+			if len(failedDockerCleanRepos) != 0 {
+				log.Println("Docker clean failed:")
+				log.Println(failedDockerCleanRepos)
+			}
+			os.Exit(1)
+		}
 	} else if artifactType == "binary" {
 		if destinationRegistryType != "s3" && destinationRegistryType != "artifactory" && destinationRegistryType != "oss" {
 			panic("unknown or empty DESTINATION_REGISTRY_TYPE")

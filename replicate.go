@@ -112,7 +112,8 @@ func listArtifactoryFiles(host string, dir string, user string, pass string) (ma
 	}
 	var output = make(map[string]bool)
 	for _, file := range result.Children {
-		output[strings.Trim(file.Uri, "/")] = file.Folder
+		fileNameWithPath := strings.Trim(result.Path, "/") + file.Uri
+		output[fileNameWithPath] = file.Folder
 	}
 	return output, nil
 }
@@ -612,9 +613,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			fileUrl := "http://" + sourceRegistry + "/artifactory/" + repo + "/" + fileName
 			fileFound := false
 			for destinationFileName, _ := range destinationBinariesList {
-				ss := strings.Split(destinationFileName, "/")
-				destinationFileNameWithoutPath := strings.Join(ss[1:len(ss)], "/")
-				if destinationFileNameWithoutPath == fileName {
+				if destinationFileName == fileName {
 					log.Println("Found: " + destinationFileName)
 					fileFound = true
 					break

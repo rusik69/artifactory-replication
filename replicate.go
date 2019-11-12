@@ -613,7 +613,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			fileFound := false
 			for destinationFileName, _ := range destinationBinariesList {
 				ss := strings.Split(destinationFileName, "/")
-				destinationFileNameWithoutPath := ss[len(ss)-1]
+				destinationFileNameWithoutPath := strings.Join(ss[1:len(ss)], "/")
 				if destinationFileNameWithoutPath == fileName {
 					log.Println("Found: " + destinationFileName)
 					fileFound = true

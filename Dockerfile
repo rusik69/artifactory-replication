@@ -4,6 +4,7 @@ WORKDIR /app
 RUN go get github.com/aws/aws-sdk-go/aws
 RUN go get github.com/docker/docker/client
 RUN go get github.com/docker/docker/api/types
+RUN go get github.com/aliyun/aliyun-oss-go-sdk/oss
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o ./replicate ./replicate.go
 # final stage
 FROM alpine:latest

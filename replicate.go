@@ -27,6 +27,7 @@ import (
 
 var ossProxyRunning bool
 var failedDockerPullRepos, failedDockerPushRepos, failedDockerCleanRepos []string
+var destinationBinariesListS3 map[string]bool
 
 // Creds source/destination credentials
 type Creds struct {
@@ -188,8 +189,6 @@ func pullImage(image ImageToReplicate, creds Creds) error {
 		buf.ReadFrom(out)
 		newStr := buf.String()
 		if strings.Contains(newStr, "error") || strings.Contains(newStr, "Error") {
-			log.Println(creds.DestinationUser)
-			log.Println(creds.DestinationPassword)
 			return errors.New(newStr)
 		}
 		io.Copy(ioutil.Discard, out)
@@ -343,15 +342,13 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	if err != nil {
 		panic(err)
 	}
-	log.Println("Found source repos:")
-	log.Println(sourceRepos)
+	log.Println("Found source repos: " + len(sourceRepos))
 	log.Println("Getting repos from destination from destination registry: " + destinationRegistry)
 	destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword, reposLimit)
 	if err != nil {
 		panic(err)
 	}
-	log.Println("Found destination repos:")
-	log.Println(destinationRepos)
+	log.Println("Found destination repos: " + len(destinationRepos))
 	dockerRepoPrefix := os.Getenv("DOCKER_REPO_PREFIX")
 	sourceFilteredRepos := sourceRepos[:0]
 	if imageFilter != "" {
@@ -582,17 +579,24 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 	var replicatedArtifacts uint = 0
 	var destinationBinariesList map[string]bool
 	sourceBinariesList, err := listArtifactoryFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
+	if err != nil {
+		panic(err)
+	}
+	log.Println("Found source binaries:")
+	log.Println(sourceBinariesList)
 	endpoint := os.Getenv("OSS_ENDPOINT")
 	if endpoint == "" {
 		endpoint = "oss-cn-beijing.aliyuncs.com"
 	}
-	if err != nil {
-		panic(err)
-	}
 	if destinationRegistryType == "s3" {
-		destinationBinariesList, err = ListS3Files(destinationRegistry)
-		if err != nil {
-			panic(err)
+		if len(destinationBinariesListS3) != 0 {
+			destinationBinariesListS3, err = ListS3Files(destinationRegistry)
+			if err != nil {
+				panic(err)
+			}
+			destinationBinariesList = destinationBinariesListS3
+			log.Println("Found destination binaries:")
+			log.Println(destinationBinariesList)
 		}
 	} else if destinationRegistryType == "artifactory" {
 		destinationBinariesList, err = listArtifactoryFiles(destinationRegistry, repo, creds.DestinationUser, creds.DestinationPassword)
@@ -607,9 +611,14 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 	}
 	for fileName, fileIsDir := range sourceBinariesList {
 		if fileIsDir {
-			replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileName, helmCdnDomain)
+			log.Println("Processing source dir: " + fileName)
+			fileNameSplit := strings.Split(fileName, "/")
+			fileNameWithoutRepo := fileNameSplit[len(fileNameSplit)-1]
+			replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileNameWithoutRepo, helmCdnDomain)
 		} else {
-			fileUrl := "http://" + sourceRegistry + "/artifactory/" + repo + "/" + fileName
+			fileNameSplit := strings.Split(fileName, "/")
+			flieNameWithoutPath := fileNameSplit[len(fileNameSplit)-1]
+			fileUrl := "http://" + sourceRegistry + "/artifactory/" + repo + "/" + flieNameWithoutPath
 			fileFound := false
 			for destinationFileName, _ := range destinationBinariesList {
 				if destinationFileName == fileName {
@@ -620,7 +629,9 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			}
 			if !fileFound || fileName == "index.yaml" {
 				tempFileName := downloadFromArtifactory(fileUrl, destinationRegistry, helmCdnDomain)
-				destinationFileName := repo + "/" + fileName
+				repoWithoutPathSplit := strings.Split(repo, "/")
+				repoWithoutPath := repoWithoutPathSplit[1]
+				destinationFileName := repoWithoutPath + "/" + fileName
 				destinationFileName = destinationFileName[strings.IndexByte(destinationFileName, '/'):]
 				log.Println("Dest: " + destinationFileName)
 				if destinationRegistryType == "s3" {

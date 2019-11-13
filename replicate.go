@@ -241,7 +241,6 @@ func pushImage(image ImageToReplicate, creds Creds) error {
 			return err
 		}
 		defer out.Close()
-		defer out.Close()
 		buf := new(bytes.Buffer)
 		buf.ReadFrom(out)
 		newStr := buf.String()

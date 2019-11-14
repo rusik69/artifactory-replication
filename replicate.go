@@ -26,7 +26,7 @@ import (
 )
 
 var ossProxyRunning bool
-var failedDockerPullRepos, failedDockerPushRepos, failedDockerCleanRepos []string
+var failedDockerPullRepos, failedDockerPushRepos, failedDockerCleanRepos, failedArtifactoryDownload, failedS3Upload []string
 var destinationBinariesListS3 map[string]bool
 
 // Creds source/destination credentials
@@ -332,7 +332,7 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry string, imageFilter string, destinationRegistryType string) {
 	var copiedArtifacts uint = 0
 	var reposLimit string
-	if destinationRegistryType == "google" {
+	if destinationRegistryType == "aws" {
 		reposLimit = "1000"
 	} else {
 		reposLimit = "1000000"
@@ -422,7 +422,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 				if destinationTagFound {
 					continue
 				} else {
-					log.Println("Repo tag: " + sourceRepo + ":" + sourceTag + " not found")
+					log.Println("Repo tag: " + sourceRepo + ":" + sourceTag + " not found at destination, replicating...")
 					err := doReplicateDocker(image, creds, destinationRegistryType, &repoFound, dockerRepoPrefix)
 					if err != nil {
 						panic(err)
@@ -449,44 +449,47 @@ func ListS3Files(S3Bucket string) (map[string]bool, error) {
 	return output, err
 }
 
-func downloadFromArtifactory(fileUrl string, destinationRegistry string, helmCdnDomain string) string {
+func downloadFromArtifactory(fileUrl string, destinationRegistry string, helmCdnDomain string) (string, error) {
 	log.Println("Downloading " + fileUrl)
 	resp, err := http.Get(fileUrl)
 	if err != nil {
-		panic(err)
+		return "", err
 	}
 	defer resp.Body.Close()
 	tempFile, err := ioutil.TempFile("", "artifactory-download")
 	if err != nil {
-		panic(err)
+		return "", err
+	}
+	if resp.StatusCode != 200 {
+		return "", errors.New("Response code error: " + string(resp.StatusCode))
 	}
 	defer tempFile.Close()
 	_, err = io.Copy(tempFile, resp.Body)
 	if err != nil {
-		panic(err)
+		return "", err
 	}
 	matched, err := regexp.MatchString("/index.yaml$", fileUrl)
 	if err != nil {
-		panic(err)
+		return "", err
 	}
 	if matched && helmCdnDomain != "" {
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			panic(err)
+			return "", err
 		}
 		linkToReplace, err := regexp.Compile("(https?://.*?/artifactory/.*?/)")
 		if err != nil {
-			panic(err)
+			return "", err
 		}
 		body = linkToReplace.ReplaceAll(body, []byte("https://"+helmCdnDomain+"/"))
 		err = ioutil.WriteFile(tempFile.Name(), body, os.FileMode(0644))
 		if err != nil {
-			panic(err)
+			return "", err
 		} else {
-			return tempFile.Name()
+			return tempFile.Name(), nil
 		}
 	} else {
-		return tempFile.Name()
+		return tempFile.Name(), nil
 	}
 }
 
@@ -496,6 +499,9 @@ func uploadToS3(destinationRegistry string, destinationFileName string, tempFile
 		return err
 	}
 	sess, err := session.NewSession(&aws.Config{})
+	if err != nil {
+		return err
+	}
 	uploader := s3manager.NewUploader(sess, func(u *s3manager.Uploader) {
 		u.PartSize = 5 * 1024 * 1024 // The minimum/default allowed part size is 5MB
 		u.Concurrency = 2            // default is 5
@@ -628,7 +634,13 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 				}
 			}
 			if !fileFound || flieNameWithoutPath == "index.yaml" {
-				tempFileName := downloadFromArtifactory(fileUrl, destinationRegistry, helmCdnDomain)
+				tempFileName, err := downloadFromArtifactory(fileUrl, destinationRegistry, helmCdnDomain)
+				if err != nil {
+					log.Println("downloadFromArtifactory failed:")
+					log.Println(err)
+					failedArtifactoryDownload = append(failedArtifactoryDownload, fileUrl)
+					continue
+				}
 				repoWithoutPathSplit := strings.Split(repo, "/")
 				repoWithoutPath := repoWithoutPathSplit[1]
 				destinationFileName := repoWithoutPath + "/" + fileName
@@ -637,7 +649,10 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 				if destinationRegistryType == "s3" {
 					err := uploadToS3(destinationRegistry, destinationFileName, tempFileName)
 					if err != nil {
-						panic(err)
+						log.Println("uploadToS3 failed:")
+						log.Println(err)
+						failedS3Upload = append(failedS3Upload, destinationFileName)
+						continue
 					}
 				} else if destinationRegistryType == "artifactory" {
 					err := uploadToArtifactory(destinationRegistry, repo, fileName, creds.DestinationUser, creds.DestinationPassword, tempFileName)
@@ -663,12 +678,20 @@ func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, 
 	log.Println("Checking " + destinationRegistryType + " repo consistency between " + sourceRegistry + " and " + destinationRegistry)
 	var missingRepos []string
 	var checkFailed bool
+	var reposLimit string
 	if destinationRegistryType == "docker" {
-		sourceRepos, err := getRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword, "1000")
+		if destinationRegistryType == "aws" {
+			reposLimit = "1000"
+		} else {
+			reposLimit = "1000000"
+		}
+		log.Println("Getting source repos from: " + sourceRegistry)
+		sourceRepos, err := getRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword, "1000000")
 		if err != nil {
 			panic(err)
 		}
-		destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword, "1000")
+		log.Println("Getting destination repos from: " + destinationRegistry)
+		destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword, reposLimit)
 		if err != nil {
 			panic(err)
 		}
@@ -702,10 +725,15 @@ func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, 
 }
 
 func getAwsEcrToken() (string, string, error) {
-	svc := ecr.New(session.New())
+	sess, err := session.NewSession(&aws.Config{})
+	if err != nil {
+		return "", "", err
+	}
+	svc := ecr.New(sess)
 	input := &ecr.GetAuthorizationTokenInput{}
 	result, err := svc.GetAuthorizationToken(input)
 	if err != nil {
+		log.Println("svc.GetAuthorizationToken error")
 		return "", "", err
 	}
 	encodedToken := *result.AuthorizationData[0].AuthorizationToken
@@ -797,6 +825,17 @@ func main() {
 			log.Println("Helm CDN domain: " + helmCdnDomain)
 		}
 		replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, helmCdnDomain)
+		if len(failedArtifactoryDownload) != 0 || len(failedS3Upload) != 0 {
+			if len(failedS3Upload) != 0 {
+				log.Println("S3 upload failed:")
+				log.Println(failedS3Upload)
+			}
+			if len(failedArtifactoryDownload) != 0 {
+				log.Println("Failed artifactory download:")
+				log.Println(failedArtifactoryDownload)
+			}
+			os.Exit(1)
+		}
 	} else {
 		panic("unknown or empty ARTIFACT_TYPE")
 	}

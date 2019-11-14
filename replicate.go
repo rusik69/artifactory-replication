@@ -342,13 +342,13 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	if err != nil {
 		panic(err)
 	}
-	log.Println("Found source repos: " + len(sourceRepos))
+	log.Println("Found source repos: " + string(len(sourceRepos)))
 	log.Println("Getting repos from destination from destination registry: " + destinationRegistry)
 	destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword, reposLimit)
 	if err != nil {
 		panic(err)
 	}
-	log.Println("Found destination repos: " + len(destinationRepos))
+	log.Println("Found destination repos: " + string(len(destinationRepos)))
 	dockerRepoPrefix := os.Getenv("DOCKER_REPO_PREFIX")
 	sourceFilteredRepos := sourceRepos[:0]
 	if imageFilter != "" {
@@ -627,7 +627,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 					break
 				}
 			}
-			if !fileFound || fileName == "index.yaml" {
+			if !fileFound || flieNameWithoutPath == "index.yaml" {
 				tempFileName := downloadFromArtifactory(fileUrl, destinationRegistry, helmCdnDomain)
 				repoWithoutPathSplit := strings.Split(repo, "/")
 				repoWithoutPath := repoWithoutPathSplit[1]

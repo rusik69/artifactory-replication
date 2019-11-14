@@ -676,10 +676,10 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 
 func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, artifactType string, destinationRegistryType string) {
 	log.Println("Checking " + destinationRegistryType + " repo consistency between " + sourceRegistry + " and " + destinationRegistry)
-	var missingRepos []string
+	var missingRepos, missingRepoTags []string
 	var checkFailed bool
 	var reposLimit string
-	if destinationRegistryType == "docker" {
+	if artifactType == "docker" {
 		if destinationRegistryType == "aws" {
 			reposLimit = "1000"
 		} else {
@@ -708,13 +708,48 @@ func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, 
 				log.Println("Repo " + sourceRepo + " NOT found")
 				checkFailed = true
 				missingRepos = append(missingRepos, sourceRepo)
-				break
+			}
+			if !checkFailed {
+				sourceRepoTags, err := listTags(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)
+				if err != nil {
+					log.Println("Failed to get tags for repo: " + sourceRepo)
+					missingRepos = append(missingRepos, sourceRepo)
+					checkFailed = true
+				}
+				destinationRepoTags, err := listTags(destinationRegistry, sourceRepo, creds.DestinationUser, creds.DestinationPassword)
+				if err != nil {
+					log.Println("Failed to get tags for repo: " + sourceRepo)
+					missingRepos = append(missingRepos, sourceRepo)
+					checkFailed = true
+				}
+				for _, sourceRepoTag := range sourceRepoTags {
+					tagFound := false
+					for _, destinationRepoTag := range destinationRepoTags {
+						if sourceRepoTag == destinationRepoTag {
+							log.Println("Repo tag: " + sourceRepo + ":" + sourceRepoTag + " found")
+							tagFound = true
+							break
+						}
+					}
+					if !tagFound {
+						log.Println("Tag not found: " + sourceRepoTag)
+						missingRepoTags = append(missingRepoTags, sourceRepo+":"+sourceRepoTag)
+						checkFailed = true
+					}
+				}
 			}
 		}
 		if checkFailed {
 			log.Println("Consistency check failed, missing repos:")
-			for _, missingRepo := range missingRepos {
-				log.Println(missingRepo)
+			if len(missingRepos) > 0 {
+				for _, missingRepo := range missingRepos {
+					log.Println(missingRepo)
+				}
+			}
+			if len(missingRepoTags) > 0 {
+				for _, missingRepoTag := range missingRepoTags {
+					log.Println(missingRepoTag)
+				}
 			}
 			os.Exit(1)
 		} else {

@@ -674,88 +674,107 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 	log.Printf("%d artifacts copied to %s\n", replicatedArtifacts, repo)
 }
 
-func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, artifactType string, destinationRegistryType string) {
-	log.Println("Checking " + destinationRegistryType + " repo consistency between " + sourceRegistry + " and " + destinationRegistry)
-	var missingRepos, missingRepoTags []string
-	var checkFailed bool
+func checkDockerRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds Creds) {
 	var reposLimit string
-	if artifactType == "docker" {
-		if destinationRegistryType == "aws" {
-			reposLimit = "1000"
-		} else {
-			reposLimit = "1000000"
-		}
-		log.Println("Getting source repos from: " + sourceRegistry)
-		sourceRepos, err := getRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword, "1000000")
-		if err != nil {
-			panic(err)
-		}
-		log.Println("Getting destination repos from: " + destinationRegistry)
-		destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword, reposLimit)
-		if err != nil {
-			panic(err)
-		}
-		for _, sourceRepo := range sourceRepos {
-			var destinationRepoFound bool
-			for _, destinationRepo := range destinationRepos {
-				if sourceRepo == destinationRepo {
-					log.Println("Repo " + sourceRepo + " found")
-					destinationRepoFound = true
-					break
-				}
+	var checkFailed bool
+	var missingRepos, missingRepoTags []string
+	if destinationRegistryType == "aws" {
+		reposLimit = "1000"
+	} else {
+		reposLimit = "1000000"
+	}
+	log.Println("Getting source repos from: " + sourceRegistry)
+	sourceRepos, err := getRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword, "1000000")
+	if err != nil {
+		panic(err)
+	}
+	log.Println("Getting destination repos from: " + destinationRegistry)
+	destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword, reposLimit)
+	if err != nil {
+		panic(err)
+	}
+	for _, sourceRepo := range sourceRepos {
+		var destinationRepoFound bool
+		for _, destinationRepo := range destinationRepos {
+			if sourceRepo == destinationRepo {
+				log.Println("Repo " + sourceRepo + " found")
+				destinationRepoFound = true
+				break
 			}
-			if !destinationRepoFound {
-				log.Println("Repo " + sourceRepo + " NOT found")
-				checkFailed = true
+		}
+		if !destinationRepoFound {
+			log.Println("Repo " + sourceRepo + " NOT found")
+			checkFailed = true
+			missingRepos = append(missingRepos, sourceRepo)
+		}
+		if !checkFailed {
+			sourceRepoTags, err := listTags(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)
+			if err != nil {
+				log.Println("Failed to get tags for repo: " + sourceRepo)
 				missingRepos = append(missingRepos, sourceRepo)
+				checkFailed = true
 			}
-			if !checkFailed {
-				sourceRepoTags, err := listTags(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)
-				if err != nil {
-					log.Println("Failed to get tags for repo: " + sourceRepo)
-					missingRepos = append(missingRepos, sourceRepo)
-					checkFailed = true
-				}
-				destinationRepoTags, err := listTags(destinationRegistry, sourceRepo, creds.DestinationUser, creds.DestinationPassword)
-				if err != nil {
-					log.Println("Failed to get tags for repo: " + sourceRepo)
-					missingRepos = append(missingRepos, sourceRepo)
-					checkFailed = true
-				}
-				for _, sourceRepoTag := range sourceRepoTags {
-					tagFound := false
-					for _, destinationRepoTag := range destinationRepoTags {
-						if sourceRepoTag == destinationRepoTag {
-							log.Println("Repo tag: " + sourceRepo + ":" + sourceRepoTag + " found")
-							tagFound = true
-							break
-						}
+			destinationRepoTags, err := listTags(destinationRegistry, sourceRepo, creds.DestinationUser, creds.DestinationPassword)
+			if err != nil {
+				log.Println("Failed to get tags for repo: " + sourceRepo)
+				missingRepos = append(missingRepos, sourceRepo)
+				checkFailed = true
+			}
+			for _, sourceRepoTag := range sourceRepoTags {
+				tagFound := false
+				for _, destinationRepoTag := range destinationRepoTags {
+					if sourceRepoTag == destinationRepoTag {
+						log.Println("Repo tag: " + sourceRepo + ":" + sourceRepoTag + " found")
+						tagFound = true
+						break
 					}
-					if !tagFound {
-						log.Println("Tag not found: " + sourceRepoTag)
-						missingRepoTags = append(missingRepoTags, sourceRepo+":"+sourceRepoTag)
-						checkFailed = true
-					}
+				}
+				if !tagFound {
+					log.Println("Tag not found: " + sourceRepoTag)
+					missingRepoTags = append(missingRepoTags, sourceRepo+":"+sourceRepoTag)
+					checkFailed = true
 				}
 			}
 		}
-		if checkFailed {
-			log.Println("Consistency check failed, missing repos:")
-			if len(missingRepos) > 0 {
-				for _, missingRepo := range missingRepos {
-					log.Println(missingRepo)
-				}
+	}
+	if checkFailed {
+		log.Println("Consistency check failed, missing repos:")
+		if len(missingRepos) > 0 {
+			for _, missingRepo := range missingRepos {
+				log.Println(missingRepo)
 			}
-			if len(missingRepoTags) > 0 {
-				for _, missingRepoTag := range missingRepoTags {
-					log.Println(missingRepoTag)
-				}
+		}
+		if len(missingRepoTags) > 0 {
+			for _, missingRepoTag := range missingRepoTags {
+				log.Println(missingRepoTag)
 			}
-			os.Exit(1)
+		}
+		os.Exit(1)
+	} else {
+		log.Println("No missing repos found")
+		return
+	}
+}
+
+func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds Creds, dir string) {
+	log.Println("Getting source repos from: " + sourceRegistry)
+	var checkFailed bool
+	sourceFilesWithDirs := listArtifactoryFiles(sourceRegistry, dir, creds.SourceUser, creds.SourcePassword)
+	for sourceFileWithDirs, isDir := range sourceFilesWithDirs {
+		if isDir {
+
 		} else {
-			log.Println("No missing repos found")
-			return
+
 		}
+	}
+}
+
+func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, artifactType string, destinationRegistryType string, dir string) {
+	log.Println("Checking " + destinationRegistryType + " repo consistency between " + sourceRegistry + " and " + destinationRegistry)
+	if artifactType == "docker" {
+		checkDockerRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds)
+	} else if artifactType == "binary" {
+		checkBinaryRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds, dir)
 	}
 }
 
@@ -802,7 +821,9 @@ func main() {
 	}
 	checkReposFlag := os.Getenv("CHECK_REPOS")
 	if checkReposFlag == "true" {
-		checkRepos(sourceRegistry, destinationRegistry, creds, artifactType, destinationRegistryType)
+		if artifactType == "docker" {
+			checkRepos(sourceRegistry, destinationRegistry, creds, artifactType, destinationRegistryType, imageFilter)
+		}
 		os.Exit(0)
 	}
 	if artifactType == "docker" {

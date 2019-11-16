@@ -478,16 +478,12 @@ func downloadFromArtifactory(fileUrl string, destinationRegistry string, helmCdn
 		if err != nil {
 			return "", err
 		}
-		log.Println("body before replace:")
-		log.Println(string([]byte(body)))
-		linkToReplace, err := regexp.Compile("(https?://.*?artifactory.*?/)")
+		linkToReplace, err := regexp.Compile("(https?://.*?artifactory.*?/(artifactory/)?[^/]*?/)")
 		if err != nil {
 			return "", err
 		}
 		log.Println("Rewriting index.yaml urls...")
 		body = linkToReplace.ReplaceAll(body, []byte("https://"+helmCdnDomain+"/"))
-		log.Println("body after replace:")
-		log.Println(string([]byte(body)))
 		err = ioutil.WriteFile(fileName, body, os.FileMode(0644))
 		if err != nil {
 			return "", err

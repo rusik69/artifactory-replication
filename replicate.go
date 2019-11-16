@@ -463,33 +463,39 @@ func downloadFromArtifactory(fileUrl string, destinationRegistry string, helmCdn
 	if resp.StatusCode != 200 {
 		return "", errors.New("Response code error: " + string(resp.StatusCode))
 	}
-	defer tempFile.Close()
 	_, err = io.Copy(tempFile, resp.Body)
 	if err != nil {
 		return "", err
 	}
+	fileName := tempFile.Name()
+	tempFile.Close()
 	matched, err := regexp.MatchString("/index.yaml$", fileUrl)
 	if err != nil {
 		return "", err
 	}
 	if matched && helmCdnDomain != "" {
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := ioutil.ReadFile(fileName)
 		if err != nil {
 			return "", err
 		}
-		linkToReplace, err := regexp.Compile("(https?://.*?/artifactory/.*?/)")
+		log.Println("body before replace:")
+		log.Println(string([]byte(body)))
+		linkToReplace, err := regexp.Compile("(https?://.*?artifactory.*?/)")
 		if err != nil {
 			return "", err
 		}
+		log.Println("Rewriting index.yaml urls...")
 		body = linkToReplace.ReplaceAll(body, []byte("https://"+helmCdnDomain+"/"))
-		err = ioutil.WriteFile(tempFile.Name(), body, os.FileMode(0644))
+		log.Println("body after replace:")
+		log.Println(string([]byte(body)))
+		err = ioutil.WriteFile(fileName, body, os.FileMode(0644))
 		if err != nil {
 			return "", err
 		} else {
-			return tempFile.Name(), nil
+			return fileName, nil
 		}
 	} else {
-		return tempFile.Name(), nil
+		return fileName, nil
 	}
 }
 
@@ -756,6 +762,7 @@ func checkDockerRepos(sourceRegistry string, destinationRegistry string, destina
 	}
 }
 
+/*
 func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds Creds, dir string) {
 	log.Println("Getting source repos from: " + sourceRegistry)
 	var checkFailed bool
@@ -773,14 +780,14 @@ func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destina
 		}
 	}
 }
-
+*/
 func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, artifactType string, destinationRegistryType string, dir string) {
 	log.Println("Checking " + destinationRegistryType + " repo consistency between " + sourceRegistry + " and " + destinationRegistry)
 	if artifactType == "docker" {
 		checkDockerRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds)
-	} else if artifactType == "binary" {
+	} /*else if artifactType == "binary" {
 		checkBinaryRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds, dir)
-	}
+	}*/
 }
 
 func getAwsEcrToken() (string, string, error) {

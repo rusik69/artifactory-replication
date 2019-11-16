@@ -759,7 +759,12 @@ func checkDockerRepos(sourceRegistry string, destinationRegistry string, destina
 func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds Creds, dir string) {
 	log.Println("Getting source repos from: " + sourceRegistry)
 	var checkFailed bool
-	sourceFilesWithDirs := listArtifactoryFiles(sourceRegistry, dir, creds.SourceUser, creds.SourcePassword)
+	var failedRepos []string
+	sourceFilesWithDirs, err := listArtifactoryFiles(sourceRegistry, dir, creds.SourceUser, creds.SourcePassword)
+	if err != nil {
+		log.Println("listArtifactorFiles failed")
+		panic(err)
+	}
 	for sourceFileWithDirs, isDir := range sourceFilesWithDirs {
 		if isDir {
 

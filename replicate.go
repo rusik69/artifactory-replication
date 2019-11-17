@@ -590,21 +590,18 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 	if err != nil {
 		panic(err)
 	}
-	log.Println("Found source binaries:")
-	log.Println(sourceBinariesList)
+	log.Println("Found source binaries:", len(sourceBinariesList))
 	endpoint := os.Getenv("OSS_ENDPOINT")
 	if endpoint == "" {
 		endpoint = "oss-cn-beijing.aliyuncs.com"
 	}
 	if destinationRegistryType == "s3" {
-		if len(destinationBinariesListS3) != 0 {
-			destinationBinariesListS3, err = ListS3Files(destinationRegistry)
+		if len(destinationBinariesList) == 0 {
+			destinationBinariesList, err = ListS3Files(destinationRegistry)
 			if err != nil {
 				panic(err)
 			}
-			destinationBinariesList = destinationBinariesListS3
-			log.Println("Found destination binaries:")
-			log.Println(destinationBinariesList)
+			log.Println("Found destination binaries:", len(destinationBinariesList))
 		}
 	} else if destinationRegistryType == "artifactory" {
 		destinationBinariesList, err = listArtifactoryFiles(destinationRegistry, repo, creds.DestinationUser, creds.DestinationPassword)
@@ -630,7 +627,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			fileFound := false
 			for destinationFileName, _ := range destinationBinariesList {
 				if destinationFileName == fileName {
-					log.Println("Found: " + destinationFileName)
+					log.Println("Found binary in destination: " + destinationFileName)
 					fileFound = true
 					break
 				}

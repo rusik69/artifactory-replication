@@ -27,7 +27,9 @@ import (
 
 var ossProxyRunning bool
 var failedDockerPullRepos, failedDockerPushRepos, failedDockerCleanRepos, failedArtifactoryDownload, failedS3Upload []string
-var destinationBinariesListS3 map[string]bool
+var destinationBinariesList map[string]bool
+var checkFailed bool
+var checkFailedLIst []string
 
 // Creds source/destination credentials
 type Creds struct {
@@ -755,32 +757,56 @@ func checkDockerRepos(sourceRegistry string, destinationRegistry string, destina
 	}
 }
 
-/*
 func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds Creds, dir string) {
 	log.Println("Getting source repos from: " + sourceRegistry)
-	var checkFailed bool
-	var failedRepos []string
 	sourceFilesWithDirs, err := listArtifactoryFiles(sourceRegistry, dir, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
 		log.Println("listArtifactorFiles failed")
 		panic(err)
 	}
-	for sourceFileWithDirs, isDir := range sourceFilesWithDirs {
+	if len(destinationBinariesList) == 0 {
+		destinationBinariesList, err = ListS3Files(destinationRegistry)
+		if err != nil {
+			log.Println("listS3Files failed")
+			panic(err)
+		}
+	}
+	for sourceFile, isDir := range sourceFilesWithDirs {
 		if isDir {
-
+			log.Println("Processing source dir: " + sourceFile)
+			fileNameSplit := strings.Split(sourceFile, "/")
+			fileNameWithoutRepo := fileNameSplit[len(fileNameSplit)-1]
+			checkBinaryRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds, dir+"/"+fileNameWithoutRepo)
 		} else {
-
+			var found bool
+			for destinationBinary, _ := range destinationBinariesList {
+				if destinationBinary == sourceFile {
+					log.Println("Found:", destinationBinary)
+					found = true
+					break
+				}
+			}
+			if !found {
+				checkFailed = true
+				log.Println("Not found:", sourceFile)
+				checkFailedLIst = append(checkFailedLIst, sourceFile)
+			}
 		}
 	}
 }
-*/
+
 func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, artifactType string, destinationRegistryType string, dir string) {
 	log.Println("Checking " + destinationRegistryType + " repo consistency between " + sourceRegistry + " and " + destinationRegistry)
 	if artifactType == "docker" {
 		checkDockerRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds)
-	} /*else if artifactType == "binary" {
+	} else if artifactType == "binary" {
 		checkBinaryRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds, dir)
-	}*/
+		if checkFailed {
+			log.Println("Repo check failed, files not found in destination:")
+			log.Println(checkFailedLIst)
+			os.Exit(1)
+		}
+	}
 }
 
 func getAwsEcrToken() (string, string, error) {
@@ -826,8 +852,11 @@ func main() {
 	}
 	checkReposFlag := os.Getenv("CHECK_REPOS")
 	if checkReposFlag == "true" {
-		if artifactType == "docker" {
+		if artifactType == "docker" || artifactType == "binary" {
 			checkRepos(sourceRegistry, destinationRegistry, creds, artifactType, destinationRegistryType, imageFilter)
+		} else {
+			log.Println("unknown artifact type: ", artifactType)
+			os.Exit(1)
 		}
 		os.Exit(0)
 	}

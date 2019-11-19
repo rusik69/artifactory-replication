@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -232,6 +233,7 @@ func pushImage(image ImageToReplicate, creds Creds) error {
 		buf := new(bytes.Buffer)
 		buf.ReadFrom(out)
 		newStr := buf.String()
+		fmt.Println(newStr)
 		if strings.Contains(newStr, "error") || strings.Contains(newStr, "Error") {
 			return errors.New(newStr)
 		}
@@ -344,13 +346,13 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	if err != nil {
 		panic(err)
 	}
-	log.Println("Found source repos: " + string(len(sourceRepos)))
+	log.Println("Found source repos: ", len(sourceRepos))
 	log.Println("Getting repos from destination from destination registry: " + destinationRegistry)
 	destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword, reposLimit)
 	if err != nil {
 		panic(err)
 	}
-	log.Println("Found destination repos: " + string(len(destinationRepos)))
+	log.Println("Found destination repos: ", len(destinationRepos))
 	dockerRepoPrefix := os.Getenv("DOCKER_REPO_PREFIX")
 	sourceFilteredRepos := sourceRepos[:0]
 	if imageFilter != "" {
@@ -362,6 +364,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	} else {
 		sourceFilteredRepos = sourceRepos
 	}
+	log.Println("Found filtered source repos: ", len(sourceFilteredRepos))
 	destinationFilteredRepos := destinationRepos[:0]
 	if imageFilter != "" {
 		for _, repo := range destinationRepos {
@@ -372,6 +375,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	} else {
 		destinationFilteredRepos = destinationRepos
 	}
+	log.Println("Found filtered destination repos: ", len(destinationFilteredRepos))
 	for _, sourceRepo := range sourceFilteredRepos {
 		sourceTags, err := listTags(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)
 		if err != nil {
@@ -624,8 +628,8 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileNameWithoutRepo, helmCdnDomain)
 		} else {
 			fileNameSplit := strings.Split(fileName, "/")
-			flieNameWithoutPath := fileNameSplit[len(fileNameSplit)-1]
-			fileUrl := "http://" + sourceRegistry + "/artifactory/" + repo + "/" + flieNameWithoutPath
+			fileNameWithoutPath := fileNameSplit[len(fileNameSplit)-1]
+			fileUrl := "http://" + sourceRegistry + "/artifactory/" + repo + "/" + fileNameWithoutPath
 			fileFound := false
 			for destinationFileName, _ := range destinationBinariesList {
 				if destinationFileName == fileName {
@@ -634,7 +638,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 					break
 				}
 			}
-			if !fileFound || flieNameWithoutPath == "index.yaml" {
+			if !fileFound || fileNameWithoutPath == "index.yaml" || fileNameWithoutPath == "index.yaml.sha256" || fileNameWithoutPath == "get_kaas.sh" {
 				tempFileName, err := downloadFromArtifactory(fileUrl, destinationRegistry, helmCdnDomain)
 				if err != nil {
 					log.Println("downloadFromArtifactory failed:")
@@ -667,7 +671,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 						panic(err)
 					}
 				}
-				replicatedArtifacts += 1
+				replicatedArtifacts++
 				os.Remove(tempFileName)
 			}
 		}

@@ -123,7 +123,7 @@ func listArtifactoryFiles(host string, dir string, user string, pass string) (ma
 
 func listTags(dockerRegistry string, image string, user string, pass string) ([]string, error) {
 	httpClient := &http.Client{}
-	req, err := http.NewRequest("GET", "https://"+dockerRegistry+"/v2/"+image+"/tags/list", nil)
+	req, err := http.NewRequest("GET", "https://"+dockerRegistry+"/v2/"+image+"/tags/list?n=10000000", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +253,7 @@ func pushImage(image ImageToReplicate, creds Creds) error {
 }
 
 func deleteImage(imageName string) error {
-	log.Println("Deleting " + imageName)
+	log.Println("Deleting local image:" + imageName)
 	ctx := context.Background()
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
@@ -339,16 +339,6 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	} else {
 		reposLimit = "1000000"
 	}
-	/*var lastTagsNum int
-	lastTagsNumString := os.Getenv("LAST_TAGS_NUM")
-	if lastTagsNumString != "" {
-		lastTagsNum, err := strconv.Atoi(lastTagsNumString)
-		if err != nil {
-			log.Println("strconv.Atoi LAST_TAGS_NUM error:")
-			panic(err)
-		}
-		log.Println("Syncing only last", lastTagsNum, "tags")
-	}*/
 	log.Println("Getting repos from source registry: " + sourceRegistry)
 	sourceRepos, err := getRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword, reposLimit)
 	if err != nil {
@@ -362,6 +352,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	}
 	log.Println("Found destination repos: ", len(destinationRepos))
 	dockerRepoPrefix := os.Getenv("DOCKER_REPO_PREFIX")
+	dockerTag := os.Getenv("DOCKER_TAG")
 	sourceFilteredRepos := sourceRepos[:0]
 	if imageFilter != "" {
 		for _, repo := range sourceRepos {
@@ -389,6 +380,16 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 		if err != nil {
 			panic(err)
 		}
+		var sourceTagsFiltered []string
+		if dockerTag != "" {
+			for _, sourceTag := range sourceTags {
+				if sourceTag == dockerTag {
+					sourceTagsFiltered = append(sourceTagsFiltered, sourceTag)
+				}
+			}
+		} else {
+			sourceTagsFiltered = sourceTags
+		}
 		repoFound := false
 		for _, destinationRepo := range destinationFilteredRepos {
 			if destinationRegistryType == "google" {
@@ -400,7 +401,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 				break
 			}
 		}
-		for _, sourceTag := range sourceTags {
+		for _, sourceTag := range sourceTagsFiltered {
 			image := ImageToReplicate{
 				SourceRegistry:      sourceRegistry,
 				SourceImage:         sourceRepo,

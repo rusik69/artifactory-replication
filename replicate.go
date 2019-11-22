@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -233,7 +232,6 @@ func pushImage(image ImageToReplicate, creds Creds) error {
 		buf := new(bytes.Buffer)
 		buf.ReadFrom(out)
 		newStr := buf.String()
-		fmt.Println(newStr)
 		if strings.Contains(newStr, "error") || strings.Contains(newStr, "Error") {
 			return errors.New(newStr)
 		}
@@ -341,6 +339,16 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	} else {
 		reposLimit = "1000000"
 	}
+	/*var lastTagsNum int
+	lastTagsNumString := os.Getenv("LAST_TAGS_NUM")
+	if lastTagsNumString != "" {
+		lastTagsNum, err := strconv.Atoi(lastTagsNumString)
+		if err != nil {
+			log.Println("strconv.Atoi LAST_TAGS_NUM error:")
+			panic(err)
+		}
+		log.Println("Syncing only last", lastTagsNum, "tags")
+	}*/
 	log.Println("Getting repos from source registry: " + sourceRegistry)
 	sourceRepos, err := getRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword, reposLimit)
 	if err != nil {

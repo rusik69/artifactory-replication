@@ -13,6 +13,8 @@ DESTINATION_REGISTRY: destination docker registry to sync to
 
 DESTINATION_REGISTRY_TYPE: aws, google or alicloud
 
+DOCKER_TAG: replicate only specific tag for all images in source repo
+
 IMAGE_FILTER: image path prefix
 
 SOURCE_USER: source registry user, if needed

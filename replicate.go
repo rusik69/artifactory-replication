@@ -331,7 +331,7 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 	return nil
 }
 
-func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFilteredRepos []string) {
+func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFilteredRepos []string, imageFilter string) {
 	log.Println("Cleaning ")
 	sourceProdRegistry := os.Getenv("SOURCE_PROD_REGISTRY")
 	if sourceProdRegistry == "" {
@@ -344,9 +344,20 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 	if err != nil {
 		panic(err)
 	}
+	var prodSourceFilteredRepos
+	if imageFilter != "" {
+		for _, repo := range sourceProdRepos {
+			if strings.HasPrefix(repo, imageFilter) {
+				prodSourceFilteredRepos = append(prodSourceFilteredRepos, repo)
+			}
+		}
+	} else {
+		sourceFilteredRepos = sourceRepos
+	}
 	log.Println("Found prod source repos: ", len(sourceProdRepos))
 	for _, destinationRepo := range destinationFilteredRepos {
-
+		var repoProdFound bool
+		for _, prodRepo := range(sourceProdRepos)
 	}
 
 }
@@ -397,7 +408,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	log.Println("Found filtered destination repos: ", len(destinationFilteredRepos))
 	dockerCleanup := os.Getenv("DOCKER_CLEANUP")
 	if dockerCleanup == "true" {
-		dockerClean(reposLimit, sourceFilteredRepos, destinationFilteredRepos)
+		dockerClean(reposLimit, sourceFilteredRepos, destinationFilteredRepos, imageFilter)
 		return
 	}
 	for _, sourceRepo := range sourceFilteredRepos {

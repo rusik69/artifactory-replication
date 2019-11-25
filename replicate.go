@@ -331,6 +331,21 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 	return nil
 }
 
+func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFilteredRepos []string) {
+	sourceProdRegistry := os.Getenv("SOURCE_PROD_REGISTRY")
+	if sourceProdRegistry == "" {
+		panic("empty SOURCE_PROD_REPOS")
+	}
+	log.Println("Getting repos from prod source registry: " + sourceProdRegistry)
+	prodSourceRegistryUser := os.Getenv("PROD_SOURCE_REGISTRY_USER")
+	prodSourceRegistryPassword := os.Getenv("PROD_SOURCE_REGISTRY_PASSWORD")
+	sourceProdRepos, err := getRepos(sourceProdRegistry, prodSourceRegistryUser, prodSourceRegistryPassword, reposLimit)
+	if err != nil {
+		panic(err)
+	}
+	log.Println("Found prod source repos: ", len(sourceProdRepos))
+}
+
 func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry string, imageFilter string, destinationRegistryType string) {
 	var copiedArtifacts uint = 0
 	var reposLimit string
@@ -375,6 +390,11 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 		destinationFilteredRepos = destinationRepos
 	}
 	log.Println("Found filtered destination repos: ", len(destinationFilteredRepos))
+	dockerCleanup := os.Getenv("DOCKER_CLEANUP")
+	if dockerCleanup == "true" {
+		dockerClean(reposLimit)
+		return
+	}
 	for _, sourceRepo := range sourceFilteredRepos {
 		sourceTags, err := listTags(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)
 		if err != nil {

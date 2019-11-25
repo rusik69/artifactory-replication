@@ -331,7 +331,7 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 	return nil
 }
 
-func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFilteredRepos []string, imageFilter string) {
+func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFilteredRepos []string, imageFilter string, destinationRegistry string, creds Creds) {
 	log.Println("Cleaning ")
 	sourceProdRegistry := os.Getenv("SOURCE_PROD_REGISTRY")
 	if sourceProdRegistry == "" {
@@ -344,7 +344,7 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 	if err != nil {
 		panic(err)
 	}
-	var prodSourceFilteredRepos
+	var prodSourceFilteredRepos []string
 	if imageFilter != "" {
 		for _, repo := range sourceProdRepos {
 			if strings.HasPrefix(repo, imageFilter) {
@@ -352,12 +352,24 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 			}
 		}
 	} else {
-		sourceFilteredRepos = sourceRepos
+		sourceFilteredRepos = sourceProdRepos
 	}
 	log.Println("Found prod source repos: ", len(sourceProdRepos))
 	for _, destinationRepo := range destinationFilteredRepos {
 		var repoProdFound bool
-		for _, prodRepo := range(sourceProdRepos)
+		for _, prodRepo := range sourceProdRepos {
+			if prodRepo == destinationRepo {
+				repoProdFound = true
+				break
+			}
+		}
+		if repoProdFound {
+			destinationRepoTags, err := listTags(destinationRegistry, destinationRepo, creds.DestinationUser, creds.DestinationPassword)
+			if err != nil {
+				panic(err)
+			}
+
+		}
 	}
 
 }
@@ -408,7 +420,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	log.Println("Found filtered destination repos: ", len(destinationFilteredRepos))
 	dockerCleanup := os.Getenv("DOCKER_CLEANUP")
 	if dockerCleanup == "true" {
-		dockerClean(reposLimit, sourceFilteredRepos, destinationFilteredRepos, imageFilter)
+		dockerClean(reposLimit, sourceFilteredRepos, destinationFilteredRepos, imageFilter, destinationRegistry, creds)
 		return
 	}
 	for _, sourceRepo := range sourceFilteredRepos {

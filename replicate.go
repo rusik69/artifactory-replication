@@ -121,6 +121,30 @@ func listArtifactoryFiles(host string, dir string, user string, pass string) (ma
 	return output, nil
 }
 
+func getDockerCreateTime(dockerRegistry string, image string, tag string, user string, pass string) (string, error) {
+	httpClient := &http.Client{}
+	req, err := http.NewRequest("GET", "https://"+dockerRegistry+"/v2/"+image+"/manifests/"+tag, nil)
+	if err != nil {
+		return "", err
+	}
+	req.SetBasicAuth(user, pass)
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	var dat map[string]interface{}
+	err = json.Unmarshal(body, dat)
+	if err != nil {
+		return "", err
+	}
+	log.Println(dat["history"][])
+}
+
 func listTags(dockerRegistry string, image string, user string, pass string) ([]string, error) {
 	httpClient := &http.Client{}
 	req, err := http.NewRequest("GET", "https://"+dockerRegistry+"/v2/"+image+"/tags/list?n=10000000", nil)
@@ -356,6 +380,8 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 	}
 	log.Println("Found prod source repos: ", len(sourceProdRepos))
 	for _, destinationRepo := range destinationFilteredRepos {
+		log.Println("Processing destination repo:", destinationRepo)
+		var filteredDestinationTags []string
 		var repoProdFound bool
 		for _, prodRepo := range sourceProdRepos {
 			if prodRepo == destinationRepo {
@@ -363,11 +389,11 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 				break
 			}
 		}
+		destinationRepoTags, err := listTags(destinationRegistry, destinationRepo, creds.DestinationUser, creds.DestinationPassword)
+		if err != nil {
+			panic(err)
+		}
 		if repoProdFound {
-			destinationRepoTags, err := listTags(destinationRegistry, destinationRepo, creds.DestinationUser, creds.DestinationPassword)
-			if err != nil {
-				panic(err)
-			}
 			sourceProdRepoTags, err := listTags(sourceProdRegistry, destinationRepo, prodSourceRegistryUser, prodSourceRegistryPassword)
 			if err != nil {
 				panic(err)
@@ -375,9 +401,18 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 			for _, destinationTag := range destinationRepoTags {
 				var tagFound bool
 				for _, sourceProdTag := range sourceProdRepoTags {
-
+					if destinationTag == sourceProdTag {
+						log.Println("Found tag on prod source and destination:", destinationRepo+":"+destinationTag)
+						tagFound = true
+						break
+					}
+				}
+				if !tagFound {
+					filteredDestinationTags = append(filteredDestinationTags, destinationTag)
 				}
 			}
+		} else {
+			filteredDestinationTags = destinationRepoTags
 		}
 	}
 

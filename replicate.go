@@ -368,7 +368,16 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 			if err != nil {
 				panic(err)
 			}
+			sourceProdRepoTags, err := listTags(sourceProdRegistry, destinationRepo, prodSourceRegistryUser, prodSourceRegistryPassword)
+			if err != nil {
+				panic(err)
+			}
+			for _, destinationTag := range destinationRepoTags {
+				var tagFound bool
+				for _, sourceProdTag := range sourceProdRepoTags {
 
+				}
+			}
 		}
 	}
 

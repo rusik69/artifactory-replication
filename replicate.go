@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -141,8 +143,16 @@ func getDockerCreateTime(dockerRegistry string, image string, tag string, user s
 	if err != nil {
 		return "", err
 	}
-	log.Println(r.Match(body))
-	return "", nil
+	created := r.FindAll(body, 999)
+	var tsmax string
+	for _, c := range created {
+		cs := strings.Split(string(c), "\"")
+		ts := cs[2]
+		if ts > tsmax {
+			tsmax = ts
+		}
+	}
+	return tsmax, nil
 }
 
 func listTags(dockerRegistry string, image string, user string, pass string) ([]string, error) {
@@ -355,15 +365,27 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 	return nil
 }
 
+func dockerRemoveTag(registry string, image string, tag string) error {
+
+}
+
 func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFilteredRepos []string, imageFilter string, destinationRegistry string, creds Creds) {
-	log.Println("Cleaning ")
+	log.Println("Cleaning repo:", destinationRegistry)
 	sourceProdRegistry := os.Getenv("SOURCE_PROD_REGISTRY")
 	if sourceProdRegistry == "" {
-		panic("empty SOURCE_PROD_REPOS")
+		panic("empty SOURCE_PROD_REGISTRY")
 	}
 	log.Println("Getting repos from prod source registry: " + sourceProdRegistry)
 	prodSourceRegistryUser := os.Getenv("PROD_SOURCE_REGISTRY_USER")
 	prodSourceRegistryPassword := os.Getenv("PROD_SOURCE_REGISTRY_PASSWORD")
+	dockerCleanKeepTagsString := os.Getenv("DOCKER_CLEAN_KEEP_TAGS")
+	if dockerCleanKeepTagsString == "" {
+		dockerCleanKeepTagsString = "10"
+	}
+	dockerCleanKeepTags, err := strconv.Atoi(dockerCleanKeepTagsString)
+	if err != nil {
+		panic(err)
+	}
 	sourceProdRepos, err := getRepos(sourceProdRegistry, prodSourceRegistryUser, prodSourceRegistryPassword, reposLimit)
 	if err != nil {
 		panic(err)
@@ -413,6 +435,22 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 			}
 		} else {
 			filteredDestinationTags = destinationRepoTags
+		}
+		var timeTags map[string]string
+		var keys []string
+		for _, destinationTag := range filteredDestinationTags {
+			tagUploadDate, err := getDockerCreateTime(destinationRegistry, destinationRepo, destinationTag, creds.DestinationUser, creds.DestinationPassword)
+			if err != nil {
+				panic(err)
+			}
+			timeTags[tagUploadDate] = destinationTag
+			keys = append(keys, tagUploadDate)
+		}
+		sort.Strings(keys)
+		if len(keys) > dockerCleanKeepTags {
+			for i := dockerCleanKeepTags - 1; i < len(keys); i++ {
+				dockerRemoveTag(destinationRegistry, destinationRepo, timeTags[keys[i]])
+			}
 		}
 	}
 

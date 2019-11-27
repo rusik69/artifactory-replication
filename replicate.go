@@ -137,12 +137,12 @@ func getDockerCreateTime(dockerRegistry string, image string, tag string, user s
 	if err != nil {
 		return "", err
 	}
-	var dat map[string]interface{}
-	err = json.Unmarshal(body, dat)
+	r, err := regexp.Compile("(created.+Z)")
 	if err != nil {
 		return "", err
 	}
-	log.Println(dat["history"][])
+	log.Println(r.Match(body))
+	return "", nil
 }
 
 func listTags(dockerRegistry string, image string, user string, pass string) ([]string, error) {
@@ -341,14 +341,14 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 	err = deleteImage(sourceImage)
 	if err != nil {
 		log.Println(err)
-		log.Println("Error deleting image, ignoring...")
+		log.Println("Error deleting local image, ignoring...")
 		failedDockerCleanRepos = append(failedDockerCleanRepos, image.SourceImage+":"+image.SourceTag)
 		return nil
 	}
 	err = deleteImage(destinationImage)
 	if err != nil {
 		log.Println(err)
-		log.Println("error deleting image, ignoring...")
+		log.Println("error deleting local image, ignoring...")
 		failedDockerCleanRepos = append(failedDockerCleanRepos, image.DestinationImage+":"+image.DestinationTag)
 		return nil
 	}

@@ -365,11 +365,12 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 	return nil
 }
 
-func dockerRemoveTag(registry string, image string, tag string) error {
+func dockerRemoveTag(registry string, image string, tag string, destinationRegistryType string) error {
+	log.Println("Removing tag:", registry+"/"+image+":"+tag)
 
 }
 
-func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFilteredRepos []string, imageFilter string, destinationRegistry string, creds Creds) {
+func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFilteredRepos []string, imageFilter string, destinationRegistry string, creds Creds, destinationRegistryType string) {
 	log.Println("Cleaning repo:", destinationRegistry)
 	sourceProdRegistry := os.Getenv("SOURCE_PROD_REGISTRY")
 	if sourceProdRegistry == "" {
@@ -449,7 +450,7 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 		sort.Strings(keys)
 		if len(keys) > dockerCleanKeepTags {
 			for i := dockerCleanKeepTags - 1; i < len(keys); i++ {
-				dockerRemoveTag(destinationRegistry, destinationRepo, timeTags[keys[i]])
+				dockerRemoveTag(destinationRegistry, destinationRepo, timeTags[keys[i]], destinationRegistryType)
 			}
 		}
 	}
@@ -502,7 +503,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	log.Println("Found filtered destination repos: ", len(destinationFilteredRepos))
 	dockerCleanup := os.Getenv("DOCKER_CLEANUP")
 	if dockerCleanup == "true" {
-		dockerClean(reposLimit, sourceFilteredRepos, destinationFilteredRepos, imageFilter, destinationRegistry, creds)
+		dockerClean(reposLimit, sourceFilteredRepos, destinationFilteredRepos, imageFilter, destinationRegistry, creds, destinationRegistryType)
 		return
 	}
 	for _, sourceRepo := range sourceFilteredRepos {

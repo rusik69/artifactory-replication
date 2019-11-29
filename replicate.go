@@ -90,6 +90,9 @@ func listArtifactoryFiles(host string, dir string, user string, pass string) (ma
 	}
 	req.SetBasicAuth(user, pass)
 	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -365,9 +368,34 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 	return nil
 }
 
-func dockerRemoveTag(registry string, image string, tag string, destinationRegistryType string) error {
+func dockerRemoveTag(registry string, image string, tag string, destinationRegistryType string, user string, pass string) error {
 	log.Println("Removing tag:", registry+"/"+image+":"+tag)
-
+	if destinationRegistryType == "azure" {
+		url := "https://" + registry + "/acr/v1/" + image + "/_tags/" + tag
+		client := &http.Client{}
+		req, err := http.NewRequest("DELETE", url, nil)
+		if err != nil {
+			return err
+		}
+		req.SetBasicAuth(user, pass)
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string([]byte(body)), "error") || strings.Contains(string([]byte(body)), "Error") {
+			return errors.New(string([]byte(body)))
+		}
+	} else {
+		log.Println("Unknown destination registry type:", destinationRegistryType)
+		return errors.New("unknown destination registry type")
+	}
+	log.Println("Removed tag:", registry+"/"+image+":"+tag)
+	return nil
 }
 
 func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFilteredRepos []string, imageFilter string, destinationRegistry string, creds Creds, destinationRegistryType string) {
@@ -437,24 +465,24 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 		} else {
 			filteredDestinationTags = destinationRepoTags
 		}
-		var timeTags map[string]string
+		timeTags := make(map[string]string)
 		var keys []string
 		for _, destinationTag := range filteredDestinationTags {
 			tagUploadDate, err := getDockerCreateTime(destinationRegistry, destinationRepo, destinationTag, creds.DestinationUser, creds.DestinationPassword)
 			if err != nil {
 				panic(err)
 			}
+			log.Println("Getting tag creation time:", destinationRegistry+"/"+destinationRepo+":"+destinationTag, tagUploadDate)
 			timeTags[tagUploadDate] = destinationTag
 			keys = append(keys, tagUploadDate)
 		}
 		sort.Strings(keys)
 		if len(keys) > dockerCleanKeepTags {
-			for i := dockerCleanKeepTags - 1; i < len(keys); i++ {
-				dockerRemoveTag(destinationRegistry, destinationRepo, timeTags[keys[i]], destinationRegistryType)
+			for i := len(keys) - 1; i >= dockerCleanKeepTags; i-- {
+				dockerRemoveTag(destinationRegistry, destinationRepo, timeTags[keys[i]], destinationRegistryType, creds.DestinationUser, creds.DestinationPassword)
 			}
 		}
 	}
-
 }
 
 func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry string, imageFilter string, destinationRegistryType string) {
@@ -501,7 +529,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 		destinationFilteredRepos = destinationRepos
 	}
 	log.Println("Found filtered destination repos: ", len(destinationFilteredRepos))
-	dockerCleanup := os.Getenv("DOCKER_CLEANUP")
+	dockerCleanup := os.Getenv("DOCKER_CLEAN")
 	if dockerCleanup == "true" {
 		dockerClean(reposLimit, sourceFilteredRepos, destinationFilteredRepos, imageFilter, destinationRegistry, creds, destinationRegistryType)
 		return

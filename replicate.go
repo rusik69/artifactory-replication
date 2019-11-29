@@ -405,8 +405,8 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 		panic("empty SOURCE_PROD_REGISTRY")
 	}
 	log.Println("Getting repos from prod source registry: " + sourceProdRegistry)
-	prodSourceRegistryUser := os.Getenv("PROD_SOURCE_REGISTRY_USER")
-	prodSourceRegistryPassword := os.Getenv("PROD_SOURCE_REGISTRY_PASSWORD")
+	prodSourceRegistryUser := os.Getenv("SOURCE_PROD_REGISTRY_USER")
+	prodSourceRegistryPassword := os.Getenv("SOURCE_PROD_REGISTRY_PASSWORD")
 	dockerCleanKeepTagsString := os.Getenv("DOCKER_CLEAN_KEEP_TAGS")
 	if dockerCleanKeepTagsString == "" {
 		dockerCleanKeepTagsString = "10"

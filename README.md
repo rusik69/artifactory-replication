@@ -25,6 +25,16 @@ DESTINATION_USER: destination registry user, if needed
 
 DESTINATION_PASSWORD: destination registry password, if needed
 
+DOCKER_CLEAN: clean destination repos
+
+DOCKER_CLEAN_KEEP_TAGS: clean oldest N tags from destination registry, 10 if not specified
+
+SOURCE_PROD_REGISTRY: source prod registry, to exclude images from cleanup
+
+SOURCE_PROD_REGISTRY_USER: user for prod registry
+
+SOURCE_PROD_REGISTRY_PASSWORD: password for prod registry
+
 
 # env variables for artifactory binary to S3 replication
 SOURCE_REGISTRY: source artifactory binary repo to sync from

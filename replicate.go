@@ -411,6 +411,7 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 	if dockerCleanKeepTagsString == "" {
 		dockerCleanKeepTagsString = "10"
 	}
+	log.Println("I'm going to remove last " + dockerCleanKeepTagsString + " tags")
 	dockerCleanKeepTags, err := strconv.Atoi(dockerCleanKeepTagsString)
 	if err != nil {
 		panic(err)
@@ -478,6 +479,7 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 		}
 		sort.Strings(keys)
 		if len(keys) > dockerCleanKeepTags {
+			log.Println("Removing last " + string(len(keys)-dockerCleanKeepTags) + " tags from: " + destinationRegistry + "/" + destinationRepo)
 			for i := len(keys) - 1; i >= dockerCleanKeepTags; i-- {
 				dockerRemoveTag(destinationRegistry, destinationRepo, timeTags[keys[i]], destinationRegistryType, creds.DestinationUser, creds.DestinationPassword)
 			}

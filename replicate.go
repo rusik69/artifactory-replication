@@ -411,7 +411,7 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 	if dockerCleanKeepTagsString == "" {
 		dockerCleanKeepTagsString = "10"
 	}
-	log.Println("I'm going to remove last " + dockerCleanKeepTagsString + " tags")
+	log.Println("I'm going to remove last", dockerCleanKeepTagsString, "tags")
 	dockerCleanKeepTags, err := strconv.Atoi(dockerCleanKeepTagsString)
 	if err != nil {
 		panic(err)
@@ -467,21 +467,27 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 			filteredDestinationTags = destinationRepoTags
 		}
 		timeTags := make(map[string]string)
-		var keys []string
+		var values []string
 		for _, destinationTag := range filteredDestinationTags {
 			tagUploadDate, err := getDockerCreateTime(destinationRegistry, destinationRepo, destinationTag, creds.DestinationUser, creds.DestinationPassword)
 			if err != nil {
 				panic(err)
 			}
 			log.Println("Getting tag creation time:", destinationRegistry+"/"+destinationRepo+":"+destinationTag, tagUploadDate)
-			timeTags[tagUploadDate] = destinationTag
-			keys = append(keys, tagUploadDate)
+			timeTags[destinationTag] = tagUploadDate
+			values = append(values, tagUploadDate)
 		}
-		sort.Strings(keys)
-		if len(keys) > dockerCleanKeepTags {
-			log.Println("Removing last " + string(len(keys)-dockerCleanKeepTags) + " tags from: " + destinationRegistry + "/" + destinationRepo)
-			for i := len(keys) - 1; i >= dockerCleanKeepTags; i-- {
-				dockerRemoveTag(destinationRegistry, destinationRepo, timeTags[keys[i]], destinationRegistryType, creds.DestinationUser, creds.DestinationPassword)
+		sort.Strings(values)
+		if len(values) > dockerCleanKeepTags {
+			log.Println("Removing last", len(values)-dockerCleanKeepTags, "tags from:", destinationRegistry+"/"+destinationRepo)
+			for i := len(values) - 1; i >= dockerCleanKeepTags; i-- {
+				var tagToRemove string
+				for k, v := range timeTags {
+					if values[i] == v {
+						tagToRemove = k
+					}
+				}
+				dockerRemoveTag(destinationRegistry, destinationRepo, tagToRemove, destinationRegistryType, creds.DestinationUser, creds.DestinationPassword)
 			}
 		}
 	}

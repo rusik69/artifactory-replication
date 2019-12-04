@@ -920,18 +920,18 @@ func checkDockerRepos(sourceRegistry string, destinationRegistry string, destina
 	return nil
 }
 
-func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds Creds, dir string) {
+func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds Creds, dir string) error {
 	log.Println("Getting source repos from: " + sourceRegistry)
 	sourceFilesWithDirs, err := listArtifactoryFiles(sourceRegistry, dir, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
 		log.Println("listArtifactorFiles failed")
-		panic(err)
+		return err
 	}
 	if len(destinationBinariesList) == 0 {
 		destinationBinariesList, err = ListS3Files(destinationRegistry)
 		if err != nil {
 			log.Println("listS3Files failed")
-			panic(err)
+			return err
 		}
 	}
 	for sourceFile, isDir := range sourceFilesWithDirs {
@@ -956,13 +956,20 @@ func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destina
 			}
 		}
 	}
+	return nil
 }
 
 func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, artifactType string, destinationRegistryType string, dir string) {
 	log.Println("Checking " + destinationRegistryType + " repo consistency between " + sourceRegistry + " and " + destinationRegistry)
 	var slackMessage string
 	if artifactType == "docker" {
-		checkDockerRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds)
+		err := checkDockerRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds)
+		if err != nil {
+			err := sendSlackNotification(err.Error())
+			if err != nil {
+				panic(err)
+			}
+		}
 		if checkFailed {
 			if len(missingRepos) > 0 {
 				log.Println("Consistency check failed, missing docker repos:")
@@ -990,7 +997,13 @@ func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, 
 			return
 		}
 	} else if artifactType == "binary" {
-		checkBinaryRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds, dir)
+		err := checkBinaryRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds, dir)
+		if err != nil {
+			err := sendSlackNotification(err.Error())
+			if err != nil {
+				panic(err)
+			}
+		}
 		if checkFailed {
 			log.Println("Repo check failed, files not found in destination:")
 			log.Println(checkFailedList)

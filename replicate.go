@@ -31,7 +31,8 @@ var ossProxyRunning bool
 var failedDockerPullRepos, failedDockerPushRepos, failedDockerCleanRepos, failedArtifactoryDownload, failedS3Upload []string
 var destinationBinariesList map[string]bool
 var checkFailed bool
-var checkFailedLIst []string
+var checkFailedList []string
+var missingRepos, missingRepoTags []string
 
 // Creds source/destination credentials
 type Creds struct {
@@ -857,8 +858,6 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 
 func checkDockerRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds Creds) {
 	var reposLimit string
-	var checkFailed bool
-	var missingRepos, missingRepoTags []string
 	if destinationRegistryType == "aws" {
 		reposLimit = "1000"
 	} else {
@@ -918,23 +917,6 @@ func checkDockerRepos(sourceRegistry string, destinationRegistry string, destina
 			}
 		}
 	}
-	if checkFailed {
-		log.Println("Consistency check failed, missing repos:")
-		if len(missingRepos) > 0 {
-			for _, missingRepo := range missingRepos {
-				log.Println(missingRepo)
-			}
-		}
-		if len(missingRepoTags) > 0 {
-			for _, missingRepoTag := range missingRepoTags {
-				log.Println(missingRepoTag)
-			}
-		}
-		os.Exit(1)
-	} else {
-		log.Println("No missing repos found")
-		return
-	}
 }
 
 func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds Creds, dir string) {
@@ -969,7 +951,7 @@ func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destina
 			if !found {
 				checkFailed = true
 				log.Println("Not found:", sourceFile)
-				checkFailedLIst = append(checkFailedLIst, sourceFile)
+				checkFailedList = append(checkFailedList, sourceFile)
 			}
 		}
 	}
@@ -977,13 +959,48 @@ func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destina
 
 func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, artifactType string, destinationRegistryType string, dir string) {
 	log.Println("Checking " + destinationRegistryType + " repo consistency between " + sourceRegistry + " and " + destinationRegistry)
+	var slackMessage string
 	if artifactType == "docker" {
 		checkDockerRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds)
+		if checkFailed {
+			if len(missingRepos) > 0 {
+				log.Println("Consistency check failed, missing repos:")
+				slackMessage += "Consistency check failed, missing repos:\n"
+				for _, missingRepo := range missingRepos {
+					log.Println(missingRepo)
+					slackMessage += missingRepo + "\n"
+				}
+			}
+			if len(missingRepoTags) > 0 {
+				log.Println("Consistency check failed, missing repo tags:")
+				slackMessage += "Consistency check failed, missing repo tags:\n"
+				for _, missingRepoTag := range missingRepoTags {
+					log.Println(missingRepoTag)
+					slackMessage += missingRepoTag + "\n"
+				}
+			}
+			err := sendSlackNotification(slackMessage)
+			if err != nil {
+				panic(err)
+			}
+			os.Exit(1)
+		} else {
+			log.Println("No missing repos found")
+			return
+		}
 	} else if artifactType == "binary" {
 		checkBinaryRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds, dir)
 		if checkFailed {
 			log.Println("Repo check failed, files not found in destination:")
-			log.Println(checkFailedLIst)
+			log.Println(checkFailedList)
+			slackMessage += "Repo check failed, files not found in destination:\n"
+			for _, file := range checkFailedList {
+				slackMessage += file + "\n"
+			}
+			err := sendSlackNotification(slackMessage)
+			if err != nil {
+				panic(err)
+			}
 			os.Exit(1)
 		}
 	}
@@ -1008,6 +1025,32 @@ func getAwsEcrToken() (string, string, error) {
 	}
 	tokenSplit := strings.Split(string(decodedToken), ":")
 	return tokenSplit[0], tokenSplit[1], nil
+}
+
+func sendSlackNotification(msg string) error {
+	slackWebhook := os.Getenv("SLACK_WEBHOOK")
+	if slackWebhook != "" {
+		type SlackRequestBody struct {
+			Text string `json:"text"`
+		}
+		slackBody, _ := json.Marshal(SlackRequestBody{Text: msg})
+		req, err := http.NewRequest(http.MethodPost, slackWebhook, bytes.NewBuffer(slackBody))
+		if err != nil {
+			return err
+		}
+		req.Header.Add("Content-Type", "application/json")
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(resp.Body)
+		if buf.String() != "ok" {
+			return errors.New("Non-ok response returned from Slack")
+		}
+	}
+	return nil
 }
 
 func main() {

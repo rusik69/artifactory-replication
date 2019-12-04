@@ -856,7 +856,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 	log.Printf("%d artifacts copied to %s\n", replicatedArtifacts, repo)
 }
 
-func checkDockerRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds Creds) {
+func checkDockerRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds Creds) error {
 	var reposLimit string
 	if destinationRegistryType == "aws" {
 		reposLimit = "1000"
@@ -866,12 +866,12 @@ func checkDockerRepos(sourceRegistry string, destinationRegistry string, destina
 	log.Println("Getting source repos from: " + sourceRegistry)
 	sourceRepos, err := getRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword, "1000000")
 	if err != nil {
-		panic(err)
+		return err
 	}
 	log.Println("Getting destination repos from: " + destinationRegistry)
 	destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword, reposLimit)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	for _, sourceRepo := range sourceRepos {
 		var destinationRepoFound bool
@@ -917,6 +917,7 @@ func checkDockerRepos(sourceRegistry string, destinationRegistry string, destina
 			}
 		}
 	}
+	return nil
 }
 
 func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds Creds, dir string) {
@@ -964,16 +965,16 @@ func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, 
 		checkDockerRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds)
 		if checkFailed {
 			if len(missingRepos) > 0 {
-				log.Println("Consistency check failed, missing repos:")
-				slackMessage += "Consistency check failed, missing repos:\n"
+				log.Println("Consistency check failed, missing docker repos:")
+				slackMessage += "Consistency check failed, missing docker repos:\n"
 				for _, missingRepo := range missingRepos {
 					log.Println(missingRepo)
 					slackMessage += missingRepo + "\n"
 				}
 			}
 			if len(missingRepoTags) > 0 {
-				log.Println("Consistency check failed, missing repo tags:")
-				slackMessage += "Consistency check failed, missing repo tags:\n"
+				log.Println("Consistency check failed, missing docker tags:")
+				slackMessage += "Consistency check failed, missing docker tags:\n"
 				for _, missingRepoTag := range missingRepoTags {
 					log.Println(missingRepoTag)
 					slackMessage += missingRepoTag + "\n"
@@ -1029,11 +1030,16 @@ func getAwsEcrToken() (string, string, error) {
 
 func sendSlackNotification(msg string) error {
 	slackWebhook := os.Getenv("SLACK_WEBHOOK")
+	channel := os.Getenv("SLACK_CHANNEL")
+	user := os.Getenv("SLACK_USER")
 	if slackWebhook != "" {
+		log.Println("Sending slack notification...")
 		type SlackRequestBody struct {
-			Text string `json:"text"`
+			Text    string `json:"text"`
+			Channel string `json:"channel"`
+			User    string `json:"user"`
 		}
-		slackBody, _ := json.Marshal(SlackRequestBody{Text: msg})
+		slackBody, _ := json.Marshal(SlackRequestBody{Text: msg, Channel: channel, User: user})
 		req, err := http.NewRequest(http.MethodPost, slackWebhook, bytes.NewBuffer(slackBody))
 		if err != nil {
 			return err
@@ -1046,6 +1052,7 @@ func sendSlackNotification(msg string) error {
 		}
 		buf := new(bytes.Buffer)
 		buf.ReadFrom(resp.Body)
+		log.Println(buf.String())
 		if buf.String() != "ok" {
 			return errors.New("Non-ok response returned from Slack")
 		}

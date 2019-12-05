@@ -1049,7 +1049,7 @@ func sendSlackNotification(msg string) error {
 		type SlackRequestBody struct {
 			Text    string `json:"text"`
 			Channel string `json:"channel"`
-			User    string `json:"user"`
+			User    string `json:"username"`
 		}
 		slackBody, _ := json.Marshal(SlackRequestBody{Text: msg, Channel: channel, User: user})
 		req, err := http.NewRequest(http.MethodPost, slackWebhook, bytes.NewBuffer(slackBody))

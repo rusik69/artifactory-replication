@@ -768,7 +768,6 @@ func uploadToOss(destinationRegistry string, fileName string, creds Creds, tempF
 func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string, helmCdnDomain string) {
 	log.Println("Processing repo " + repo)
 	var replicatedArtifacts uint = 0
-	var destinationBinariesList map[string]bool
 	sourceBinariesList, err := listArtifactoryFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
 		panic(err)

@@ -33,6 +33,7 @@ var destinationBinariesList map[string]bool
 var checkFailed bool
 var checkFailedList []string
 var missingRepos, missingRepoTags []string
+var removedTags, skippedTags uint64
 
 // Creds source/destination credentials
 type Creds struct {
@@ -395,14 +396,22 @@ func getAzureDockerTagManifestDigest(registry string, image string, tag string, 
 		return "", err
 	}
 	digestRaw := r.Find(body)
+	if string(digestRaw) == "" {
+		return "", nil
+	}
 	digestSha := digestRaw[0 : len(digestRaw)-2]
-	digest := digestSha[7:]
+	//digest := digestSha[7:]
+	digest := digestSha
 	return string(digest), nil
 }
 
 func dockerRemoveTag(registry string, image string, tag string, destinationRegistryType string, user string, pass string) error {
-	log.Println("Removing tag:", registry+"/"+image+":"+tag)
 	if destinationRegistryType == "azure" {
+		digest, err := getAzureDockerTagManifestDigest(registry, image, tag, user, pass)
+		if err != nil {
+			return err
+		}
+		log.Println("Removing tag:", registry+"/"+image+":"+tag)
 		url := "https://" + registry + "/acr/v1/" + image + "/_tags/" + tag
 		client := &http.Client{}
 		req, err := http.NewRequest("DELETE", url, nil)
@@ -422,35 +431,38 @@ func dockerRemoveTag(registry string, image string, tag string, destinationRegis
 		if strings.Contains(string([]byte(body)), "error") || strings.Contains(string([]byte(body)), "Error") {
 			return errors.New(string([]byte(body)))
 		}
-		digest, err := getAzureDockerTagManifestDigest(registry, image, tag, user, pass)
-		if err != nil {
-			return err
-		}
-		log.Println("Removing", image+":"+tag, "digest:", digest)
-		urlTag := "https://" + registry + "/v2/" + image + "/manifests/" + digest
-		clientTag := &http.Client{}
-		reqTag, err := http.NewRequest("DELETE", urlTag, nil)
-		if err != nil {
-			return err
-		}
-		reqTag.SetBasicAuth(user, pass)
-		respTag, err := clientTag.Do(reqTag)
-		if err != nil {
-			return err
-		}
-		defer respTag.Body.Close()
-		bodyTag, err := ioutil.ReadAll(respTag.Body)
-		if err != nil {
-			return err
-		}
-		if strings.Contains(string([]byte(bodyTag)), "error") || strings.Contains(string([]byte(bodyTag)), "Error") {
-			return errors.New(string([]byte(bodyTag)))
+		if digest != "" {
+			log.Println("Removing", image+":"+tag, "digest:", digest)
+			urlTag := "https://" + registry + "/v2/" + image + "/manifests/" + digest
+			clientTag := &http.Client{}
+			reqTag, err := http.NewRequest("DELETE", urlTag, nil)
+			if err != nil {
+				return err
+			}
+			reqTag.SetBasicAuth(user, pass)
+			respTag, err := clientTag.Do(reqTag)
+			if err != nil {
+				return err
+			}
+			defer respTag.Body.Close()
+			bodyTag, err := ioutil.ReadAll(respTag.Body)
+			if err != nil {
+				return err
+			}
+			if strings.Contains(string([]byte(bodyTag)), "error") || strings.Contains(string([]byte(bodyTag)), "Error") {
+				return errors.New(string([]byte(bodyTag)))
+			}
+		} else {
+			log.Println("Tag", image+":"+tag, "have empty digest, skipping...")
+			skippedTags += 1
+			return nil
 		}
 	} else {
 		log.Println("Unknown destination registry type:", destinationRegistryType)
 		return errors.New("unknown destination registry type")
 	}
 	log.Println("Removed tag:", registry+"/"+image+":"+tag)
+	removedTags += 1
 	return nil
 }
 
@@ -550,6 +562,8 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 			}
 		}
 	}
+	log.Println("Removed", removedTags, "tags")
+	log.Println("Skipped", skippedTags, "tags")
 }
 
 func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry string, imageFilter string, destinationRegistryType string) {

@@ -429,7 +429,11 @@ func dockerRemoveTag(registry string, image string, tag string, destinationRegis
 			return err
 		}
 		if strings.Contains(string([]byte(body)), "error") || strings.Contains(string([]byte(body)), "Error") {
-			return errors.New(string([]byte(body)))
+			log.Println("Error removing tag", image+":"+tag)
+			log.Println(string([]byte(body)))
+			log.Println("Ignoring...")
+			skippedTags += 1
+			return nil
 		}
 		if digest != "" {
 			log.Println("Removing", image+":"+tag, "digest:", digest)
@@ -450,7 +454,11 @@ func dockerRemoveTag(registry string, image string, tag string, destinationRegis
 				return err
 			}
 			if strings.Contains(string([]byte(bodyTag)), "error") || strings.Contains(string([]byte(bodyTag)), "Error") {
-				return errors.New(string([]byte(bodyTag)))
+				log.Println("Error removing tag", image+":"+tag)
+				log.Println(string([]byte(bodyTag)))
+				log.Println("Ignoring...")
+				skippedTags += 1
+				return nil
 			}
 		} else {
 			log.Println("Tag", image+":"+tag, "have empty digest, skipping...")

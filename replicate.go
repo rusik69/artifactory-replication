@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -81,6 +83,34 @@ func getRepos(dockerRegistry string, user string, pass string, reposLimit string
 		return nil, err
 	}
 	return b.Repositories, nil
+}
+
+func getArtifactoryFileMD5(host string, fileName string, user string, pass string) (string, error) {
+	url := "https://" + host + "/artifactory/api/storage/" + fileName
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.SetBasicAuth(user, pass)
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	type storageInfo struct {
+		Checksums map[string]string `json:checksums`
+	}
+	var result storageInfo
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		return "", err
+	}
+	return result.Checksums["md5"], nil
 }
 
 func listArtifactoryFiles(host string, dir string, user string, pass string) (map[string]bool, error) {
@@ -712,6 +742,11 @@ func ListS3Files(S3Bucket string) (map[string]bool, error) {
 	return output, err
 }
 
+func getS3FileMD5(S3Bucket string, filename string) (string, error) {
+	sess, _ := session.NewSession(&aws.Config{})
+	svc := s3.New(sess)
+}
+
 func downloadFromArtifactory(fileUrl string, destinationRegistry string, helmCdnDomain string) (string, error) {
 	log.Println("Downloading " + fileUrl)
 	resp, err := http.Get(fileUrl)
@@ -771,12 +806,35 @@ func uploadToS3(destinationRegistry string, destinationFileName string, tempFile
 		u.PartSize = 5 * 1024 * 1024 // The minimum/default allowed part size is 5MB
 		u.Concurrency = 2            // default is 5
 	})
-	log.Println("Uploading " + destinationFileName + " to " + destinationRegistry)
+	fileMD5, err := computeFileMD5(tempFileName)
+	if err != nil {
+		return err
+	}
+	log.Println("Uploading "+destinationFileName+" to "+destinationRegistry, "MD5:", fileMD5)
 	_, err = uploader.Upload(&s3manager.UploadInput{
 		Bucket: aws.String(destinationRegistry),
 		Key:    aws.String(destinationFileName),
-		Body:   f})
+		Body:   f,
+		Metadata: map[string]*string{
+			"md5": aws.String(fileMD5),
+		}})
 	return err
+}
+
+func computeFileMD5(filePath string) (string, error) {
+	var returnMD5String string
+	file, err := os.Open(tempFileName)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	hash := md5.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+	hashInBytes := hash.Sum(nil)[:16]
+	returnMD5String = hex.EncodeToString(hashInBytes)
+	return returnMD5String, nil
 }
 
 func uploadToArtifactory(destinationRegistry string, repo string, destinationFileName string, destinationUser string, destinationPassword string, tempFileName string) error {
@@ -1025,6 +1083,15 @@ func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destina
 				if destinationBinary == sourceFile {
 					log.Println("Found:", destinationBinary)
 					found = true
+					sourceMD5, err := getArtifactoryFileMD5(sourceRegistry, sourceFile, creds.SourceUser, creds.SourcePassword)
+					if err != nil {
+						log.Println("Error getting source file md5:", sourceFile)
+						log.Println(err)
+						checkFailed = true
+						checkFailedList = append(checkFailedList, sourceFile)
+						continue
+					}
+
 					break
 				}
 			}

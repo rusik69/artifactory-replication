@@ -912,7 +912,7 @@ func uploadToOss(destinationRegistry string, fileName string, creds Creds, tempF
 	return err
 }
 
-func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string, helmCdnDomain string) {
+func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string, helmCdnDomain string, force string) {
 	log.Println("Processing repo " + repo)
 	var replicatedArtifacts uint = 0
 	sourceBinariesList, err := listArtifactoryFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
@@ -948,7 +948,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			log.Println("Processing source dir: " + fileName)
 			fileNameSplit := strings.Split(fileName, "/")
 			fileNameWithoutRepo := fileNameSplit[len(fileNameSplit)-1]
-			replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileNameWithoutRepo, helmCdnDomain)
+			replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileNameWithoutRepo, helmCdnDomain, force)
 		} else {
 			fileNameSplit := strings.Split(fileName, "/")
 			fileNameWithoutPath := fileNameSplit[len(fileNameSplit)-1]
@@ -961,7 +961,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 					break
 				}
 			}
-			if !fileFound || fileNameWithoutPath == "index.yaml" || fileNameWithoutPath == "index.yaml.sha256" || fileNameWithoutPath == "get_kaas.sh" {
+			if !fileFound || fileNameWithoutPath == "index.yaml" || fileNameWithoutPath == "index.yaml.sha256" || fileNameWithoutPath == "get_kaas.sh" || force == "true" {
 				tempFileName, err := downloadFromArtifactory(fileURL, destinationRegistry, helmCdnDomain)
 				if err != nil {
 					log.Println("downloadFromArtifactory failed:")
@@ -1257,6 +1257,7 @@ func main() {
 	artifactType := os.Getenv("ARTIFACT_TYPE")
 	destinationRegistryType := os.Getenv("DESTINATION_REGISTRY_TYPE")
 	helmCdnDomain := os.Getenv("HELM_CDN_DOMAIN")
+	force := os.Getenv("FORCE")
 	creds := Creds{
 		SourceUser:          os.Getenv("SOURCE_USER"),
 		SourcePassword:      os.Getenv("SOURCE_PASSWORD"),
@@ -1327,7 +1328,7 @@ func main() {
 		if helmCdnDomain != "" {
 			log.Println("Helm CDN domain: " + helmCdnDomain)
 		}
-		replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, helmCdnDomain)
+		replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, helmCdnDomain, force)
 		if len(failedArtifactoryDownload) != 0 || len(failedS3Upload) != 0 {
 			if len(failedS3Upload) != 0 {
 				log.Println("S3 upload failed:")

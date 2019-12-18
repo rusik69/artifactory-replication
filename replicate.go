@@ -745,6 +745,19 @@ func ListS3Files(S3Bucket string) (map[string]bool, error) {
 func getS3FileMD5(S3Bucket string, filename string) (string, error) {
 	sess, _ := session.NewSession(&aws.Config{})
 	svc := s3.New(sess)
+	input := &s3.HeadObjectInput{
+		Bucket: aws.String(S3Bucket),
+		Key:    aws.String(filename),
+	}
+	object, err := svc.HeadObject(input)
+	if err != nil {
+		return "", err
+	}
+	if val, ok := object.Metadata["md5"]; ok {
+		return *val, nil
+	} else {
+		return "", errors.New("Missing md5 in metadata")
+	}
 }
 
 func downloadFromArtifactory(fileUrl string, destinationRegistry string, helmCdnDomain string) (string, error) {
@@ -1091,7 +1104,22 @@ func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destina
 						checkFailedList = append(checkFailedList, sourceFile)
 						continue
 					}
-
+					destinationMD5, err := getS3FileMD5(destinationRegistry, destinationBinary)
+					if err != nil {
+						log.Println("Error getting destination file md5:", destinationBinary)
+						log.Println(err)
+						checkFailed = true
+						checkFailedList = append(checkFailedList, destinationBinary)
+						continue
+					}
+					if sourceMD5 != destinationMD5 {
+						log.Println("MD5 mismatch:", destinationBinary)
+						log.Println("Source MD5:", sourceMD5)
+						log.Println("DestinationMD5:", destinationMD5)
+						checkFailed = true
+						checkFailedList = append(checkFailedList, destinationBinary)
+						continue
+					}
 					break
 				}
 			}

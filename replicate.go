@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -63,10 +63,10 @@ func getRepos(dockerRegistry string, user string, pass string, reposLimit string
 	}
 	req.SetBasicAuth(user, pass)
 	resp, err := client.Do(req)
-	defer resp.Body.Close()
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -85,7 +85,7 @@ func getRepos(dockerRegistry string, user string, pass string, reposLimit string
 	return b.Repositories, nil
 }
 
-func getArtifactoryFileMD5(host string, fileName string, user string, pass string) (string, error) {
+func getArtifactoryFileSHA256(host string, fileName string, user string, pass string) (string, error) {
 	url := "https://" + host + "/artifactory/api/storage/" + fileName
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
@@ -103,14 +103,14 @@ func getArtifactoryFileMD5(host string, fileName string, user string, pass strin
 		return "", err
 	}
 	type storageInfo struct {
-		Checksums map[string]string `json:checksums`
+		Checksums map[string]string `json:"checksums"`
 	}
 	var result storageInfo
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		return "", err
 	}
-	return result.Checksums["md5"], nil
+	return result.Checksums["sha256"], nil
 }
 
 func listArtifactoryFiles(host string, dir string, user string, pass string) (map[string]bool, error) {
@@ -131,7 +131,7 @@ func listArtifactoryFiles(host string, dir string, user string, pass string) (ma
 		return nil, err
 	}
 	type ch struct {
-		Uri    string
+		URI    string
 		Folder bool
 	}
 	type storageInfo struct {
@@ -143,7 +143,7 @@ func listArtifactoryFiles(host string, dir string, user string, pass string) (ma
 		ModifiedBy   string
 		LastUpdated  string
 		Children     []ch
-		Uri          string
+		URI          string
 	}
 	var result storageInfo
 	err = json.Unmarshal(body, &result)
@@ -152,7 +152,7 @@ func listArtifactoryFiles(host string, dir string, user string, pass string) (ma
 	}
 	var output = make(map[string]bool)
 	for _, file := range result.Children {
-		fileNameWithPath := strings.Trim(result.Path, "/") + file.Uri
+		fileNameWithPath := strings.Trim(result.Path, "/") + file.URI
 		output[fileNameWithPath] = file.Folder
 	}
 	return output, nil
@@ -462,7 +462,7 @@ func dockerRemoveTag(registry string, image string, tag string, destinationRegis
 			log.Println("Error removing tag", image+":"+tag)
 			log.Println(string([]byte(body)))
 			log.Println("Ignoring...")
-			skippedTags += 1
+			skippedTags++
 			return nil
 		}
 		if digest != "" {
@@ -487,12 +487,12 @@ func dockerRemoveTag(registry string, image string, tag string, destinationRegis
 				log.Println("Error removing tag", image+":"+tag)
 				log.Println(string([]byte(bodyTag)))
 				log.Println("Ignoring...")
-				skippedTags += 1
+				skippedTags++
 				return nil
 			}
 		} else {
 			log.Println("Tag", image+":"+tag, "have empty digest, skipping...")
-			skippedTags += 1
+			skippedTags++
 			return nil
 		}
 	} else {
@@ -500,7 +500,7 @@ func dockerRemoveTag(registry string, image string, tag string, destinationRegis
 		return errors.New("unknown destination registry type")
 	}
 	log.Println("Removed tag:", registry+"/"+image+":"+tag)
-	removedTags += 1
+	removedTags++
 	return nil
 }
 
@@ -694,7 +694,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 				if err != nil {
 					panic(err)
 				}
-				copiedArtifacts += 1
+				copiedArtifacts++
 			} else {
 				destinationTagFound := false
 				destinationRepo := sourceRepo
@@ -720,7 +720,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 					if err != nil {
 						panic(err)
 					}
-					copiedArtifacts += 1
+					copiedArtifacts++
 				}
 			}
 		}
@@ -728,7 +728,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	log.Printf("%d artifacts copied\n", copiedArtifacts)
 }
 
-func ListS3Files(S3Bucket string) (map[string]bool, error) {
+func listS3Files(S3Bucket string) (map[string]bool, error) {
 	sess, _ := session.NewSession(&aws.Config{})
 	svc := s3.New(sess)
 	output := make(map[string]bool)
@@ -742,7 +742,7 @@ func ListS3Files(S3Bucket string) (map[string]bool, error) {
 	return output, err
 }
 
-func getS3FileMD5(S3Bucket string, filename string) (string, error) {
+func getS3FileSHA256(S3Bucket string, filename string) (string, error) {
 	sess, _ := session.NewSession(&aws.Config{})
 	svc := s3.New(sess)
 	input := &s3.HeadObjectInput{
@@ -753,16 +753,15 @@ func getS3FileMD5(S3Bucket string, filename string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if val, ok := object.Metadata["md5"]; ok {
+	if val, ok := object.Metadata["sha256"]; ok {
 		return *val, nil
-	} else {
-		return "", errors.New("Missing md5 in metadata")
 	}
+	return "", errors.New("Missing md5 in metadata")
 }
 
-func downloadFromArtifactory(fileUrl string, destinationRegistry string, helmCdnDomain string) (string, error) {
-	log.Println("Downloading " + fileUrl)
-	resp, err := http.Get(fileUrl)
+func downloadFromArtifactory(fileURL string, destinationRegistry string, helmCdnDomain string) (string, error) {
+	log.Println("Downloading " + fileURL)
+	resp, err := http.Get(fileURL)
 	if err != nil {
 		return "", err
 	}
@@ -780,7 +779,7 @@ func downloadFromArtifactory(fileUrl string, destinationRegistry string, helmCdn
 	}
 	fileName := tempFile.Name()
 	tempFile.Close()
-	matched, err := regexp.MatchString("/index.yaml$", fileUrl)
+	matched, err := regexp.MatchString("/index.yaml$", fileURL)
 	if err != nil {
 		return "", err
 	}
@@ -798,12 +797,9 @@ func downloadFromArtifactory(fileUrl string, destinationRegistry string, helmCdn
 		err = ioutil.WriteFile(fileName, body, os.FileMode(0644))
 		if err != nil {
 			return "", err
-		} else {
-			return fileName, nil
 		}
-	} else {
-		return fileName, nil
 	}
+	return fileName, nil
 }
 
 func uploadToS3(destinationRegistry string, destinationFileName string, tempFileName string) error {
@@ -819,35 +815,35 @@ func uploadToS3(destinationRegistry string, destinationFileName string, tempFile
 		u.PartSize = 5 * 1024 * 1024 // The minimum/default allowed part size is 5MB
 		u.Concurrency = 2            // default is 5
 	})
-	fileMD5, err := computeFileMD5(tempFileName)
+	fileSHA256, err := computeFileSHA256(tempFileName)
 	if err != nil {
 		return err
 	}
-	log.Println("Uploading "+destinationFileName+" to "+destinationRegistry, "MD5:", fileMD5)
+	log.Println("Uploading "+destinationFileName+" to "+destinationRegistry, "SHA256:", fileSHA256)
 	_, err = uploader.Upload(&s3manager.UploadInput{
 		Bucket: aws.String(destinationRegistry),
 		Key:    aws.String(destinationFileName),
 		Body:   f,
 		Metadata: map[string]*string{
-			"md5": aws.String(fileMD5),
+			"sha256": aws.String(fileSHA256),
 		}})
 	return err
 }
 
-func computeFileMD5(filePath string) (string, error) {
-	var returnMD5String string
-	file, err := os.Open(tempFileName)
+func computeFileSHA256(filePath string) (string, error) {
+	var returnSHA256 string
+	file, err := os.Open(filePath)
 	if err != nil {
 		return "", err
 	}
 	defer file.Close()
-	hash := md5.New()
+	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
 		return "", err
 	}
-	hashInBytes := hash.Sum(nil)[:16]
-	returnMD5String = hex.EncodeToString(hashInBytes)
-	return returnMD5String, nil
+	hashInBytes := hash.Sum(nil)
+	returnSHA256 = hex.EncodeToString(hashInBytes)
+	return returnSHA256, nil
 }
 
 func uploadToArtifactory(destinationRegistry string, repo string, destinationFileName string, destinationUser string, destinationPassword string, tempFileName string) error {
@@ -902,7 +898,7 @@ func uploadToOss(destinationRegistry string, fileName string, creds Creds, tempF
 		return err
 	}
 	attempts := 5
-	for i := 0; i < attempts; i += 1 {
+	for i := 0; i < attempts; i++ {
 		if i >= 1 {
 			log.Println(err)
 			log.Printf("Attempt: %d\n", i)
@@ -930,7 +926,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 	}
 	if destinationRegistryType == "s3" {
 		if len(destinationBinariesList) == 0 {
-			destinationBinariesList, err = ListS3Files(destinationRegistry)
+			destinationBinariesList, err = listS3Files(destinationRegistry)
 			if err != nil {
 				panic(err)
 			}
@@ -956,9 +952,9 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 		} else {
 			fileNameSplit := strings.Split(fileName, "/")
 			fileNameWithoutPath := fileNameSplit[len(fileNameSplit)-1]
-			fileUrl := "http://" + sourceRegistry + "/artifactory/" + repo + "/" + fileNameWithoutPath
+			fileURL := "http://" + sourceRegistry + "/artifactory/" + repo + "/" + fileNameWithoutPath
 			fileFound := false
-			for destinationFileName, _ := range destinationBinariesList {
+			for destinationFileName := range destinationBinariesList {
 				if destinationFileName == fileName {
 					log.Println("Found binary in destination: " + destinationFileName)
 					fileFound = true
@@ -966,11 +962,11 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 				}
 			}
 			if !fileFound || fileNameWithoutPath == "index.yaml" || fileNameWithoutPath == "index.yaml.sha256" || fileNameWithoutPath == "get_kaas.sh" {
-				tempFileName, err := downloadFromArtifactory(fileUrl, destinationRegistry, helmCdnDomain)
+				tempFileName, err := downloadFromArtifactory(fileURL, destinationRegistry, helmCdnDomain)
 				if err != nil {
 					log.Println("downloadFromArtifactory failed:")
 					log.Println(err)
-					failedArtifactoryDownload = append(failedArtifactoryDownload, fileUrl)
+					failedArtifactoryDownload = append(failedArtifactoryDownload, fileURL)
 					continue
 				}
 				repoWithoutPathSplit := strings.Split(repo, "/")
@@ -1078,7 +1074,7 @@ func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destina
 		return err
 	}
 	if len(destinationBinariesList) == 0 {
-		destinationBinariesList, err = ListS3Files(destinationRegistry)
+		destinationBinariesList, err = listS3Files(destinationRegistry)
 		if err != nil {
 			log.Println("listS3Files failed")
 			return err
@@ -1092,30 +1088,30 @@ func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destina
 			checkBinaryRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds, dir+"/"+fileNameWithoutRepo)
 		} else {
 			var found bool
-			for destinationBinary, _ := range destinationBinariesList {
+			for destinationBinary := range destinationBinariesList {
 				if destinationBinary == sourceFile {
 					log.Println("Found:", destinationBinary)
 					found = true
-					sourceMD5, err := getArtifactoryFileMD5(sourceRegistry, sourceFile, creds.SourceUser, creds.SourcePassword)
+					sourceSHA256, err := getArtifactoryFileSHA256(sourceRegistry, sourceFile, creds.SourceUser, creds.SourcePassword)
 					if err != nil {
-						log.Println("Error getting source file md5:", sourceFile)
+						log.Println("Error getting source file sha256:", sourceFile)
 						log.Println(err)
 						checkFailed = true
 						checkFailedList = append(checkFailedList, sourceFile)
 						continue
 					}
-					destinationMD5, err := getS3FileMD5(destinationRegistry, destinationBinary)
+					destinationSHA256, err := getS3FileSHA256(destinationRegistry, destinationBinary)
 					if err != nil {
-						log.Println("Error getting destination file md5:", destinationBinary)
+						log.Println("Error getting destination file sha256:", destinationBinary)
 						log.Println(err)
 						checkFailed = true
 						checkFailedList = append(checkFailedList, destinationBinary)
 						continue
 					}
-					if sourceMD5 != destinationMD5 {
-						log.Println("MD5 mismatch:", destinationBinary)
-						log.Println("Source MD5:", sourceMD5)
-						log.Println("DestinationMD5:", destinationMD5)
+					if sourceSHA256 != destinationSHA256 {
+						log.Println("SHA256 mismatch:", destinationBinary)
+						log.Println("Source SHA256:", sourceSHA256)
+						log.Println("Destination SHA256:", destinationSHA256)
 						checkFailed = true
 						checkFailedList = append(checkFailedList, destinationBinary)
 						continue

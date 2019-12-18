@@ -29,6 +29,8 @@ import (
 	"github.com/docker/docker/client"
 )
 
+var alwaysSyncList = []string{"index.yaml.sha256", "index.yaml", "get_kaas.sh"}
+
 var ossProxyRunning bool
 var failedDockerPullRepos, failedDockerPushRepos, failedDockerCleanRepos, failedArtifactoryDownload, failedS3Upload []string
 var destinationBinariesList map[string]bool
@@ -615,12 +617,22 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	log.Println("Getting repos from source registry: " + sourceRegistry)
 	sourceRepos, err := getRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword, reposLimit)
 	if err != nil {
+		err2 := sendSlackNotification(err.Error())
+		if err2 != nil {
+			log.Println(err)
+			panic(err2)
+		}
 		panic(err)
 	}
 	log.Println("Found source repos: ", len(sourceRepos))
 	log.Println("Getting repos from destination from destination registry: " + destinationRegistry)
 	destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword, reposLimit)
 	if err != nil {
+		err2 := sendSlackNotification(err.Error())
+		if err2 != nil {
+			log.Println(err)
+			panic(err2)
+		}
 		panic(err)
 	}
 	log.Println("Found destination repos: ", len(destinationRepos))
@@ -656,6 +668,11 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	for _, sourceRepo := range sourceFilteredRepos {
 		sourceTags, err := listTags(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)
 		if err != nil {
+			err2 := sendSlackNotification(err.Error())
+			if err2 != nil {
+				log.Println(err)
+				panic(err2)
+			}
 			panic(err)
 		}
 		var sourceTagsFiltered []string
@@ -692,6 +709,11 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 				log.Println("Destination repo not found: " + sourceRepo)
 				err := doReplicateDocker(image, creds, destinationRegistryType, &repoFound, dockerRepoPrefix)
 				if err != nil {
+					err2 := sendSlackNotification(err.Error())
+					if err2 != nil {
+						log.Println(err)
+						panic(err2)
+					}
 					panic(err)
 				}
 				copiedArtifacts++
@@ -703,6 +725,11 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 				}
 				destinationTags, err := listTags(destinationRegistry, destinationRepo, creds.DestinationUser, creds.DestinationPassword)
 				if err != nil {
+					err2 := sendSlackNotification(err.Error())
+					if err2 != nil {
+						log.Println(err)
+						panic(err2)
+					}
 					panic(err)
 				}
 				for _, destinationTag := range destinationTags {
@@ -718,6 +745,11 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 					log.Println("Repo tag: " + sourceRepo + ":" + sourceTag + " not found at destination, replicating...")
 					err := doReplicateDocker(image, creds, destinationRegistryType, &repoFound, dockerRepoPrefix)
 					if err != nil {
+						err2 := sendSlackNotification(err.Error())
+						if err2 != nil {
+							log.Println(err)
+							panic(err2)
+						}
 						panic(err)
 					}
 					copiedArtifacts++
@@ -917,6 +949,11 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 	var replicatedArtifacts uint = 0
 	sourceBinariesList, err := listArtifactoryFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
+		err2 := sendSlackNotification(err.Error())
+		if err2 != nil {
+			log.Println(err)
+			panic(err2)
+		}
 		panic(err)
 	}
 	log.Println("Found source binaries:", len(sourceBinariesList))
@@ -928,6 +965,11 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 		if len(destinationBinariesList) == 0 {
 			destinationBinariesList, err = listS3Files(destinationRegistry)
 			if err != nil {
+				err2 := sendSlackNotification(err.Error())
+				if err2 != nil {
+					log.Println(err)
+					panic(err2)
+				}
 				panic(err)
 			}
 			log.Println("Found destination binaries:", len(destinationBinariesList))
@@ -935,11 +977,21 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 	} else if destinationRegistryType == "artifactory" {
 		destinationBinariesList, err = listArtifactoryFiles(destinationRegistry, repo, creds.DestinationUser, creds.DestinationPassword)
 		if err != nil {
+			err2 := sendSlackNotification(err.Error())
+			if err2 != nil {
+				log.Println(err)
+				panic(err2)
+			}
 			panic(err)
 		}
 	} else if destinationRegistryType == "oss" {
 		destinationBinariesList, err = listOssFiles(destinationRegistry, creds, endpoint)
 		if err != nil {
+			err2 := sendSlackNotification(err.Error())
+			if err2 != nil {
+				log.Println(err)
+				panic(err2)
+			}
 			panic(err)
 		}
 	}
@@ -961,7 +1013,14 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 					break
 				}
 			}
-			if !fileFound || fileNameWithoutPath == "index.yaml" || fileNameWithoutPath == "index.yaml.sha256" || fileNameWithoutPath == "get_kaas.sh" || force == "true" {
+			var doSync bool
+			for _, st := range alwaysSyncList {
+				if fileNameWithoutPath == st {
+					doSync = true
+					break
+				}
+			}
+			if !fileFound || doSync || force == "true" {
 				tempFileName, err := downloadFromArtifactory(fileURL, destinationRegistry, helmCdnDomain)
 				if err != nil {
 					log.Println("downloadFromArtifactory failed:")

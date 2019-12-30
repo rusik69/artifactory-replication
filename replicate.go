@@ -1274,6 +1274,10 @@ func sendSlackNotification(msg string) error {
 	slackWebhook := os.Getenv("SLACK_WEBHOOK")
 	channel := os.Getenv("SLACK_CHANNEL")
 	user := os.Getenv("SLACK_USER")
+	buildUrl := os.Getenv("BUILD_URL")
+	if buildUrl != "" {
+		msg = buildUrl + "\n" + msg
+	}
 	if slackWebhook != "" {
 		log.Println("Sending slack notification...")
 		type SlackRequestBody struct {
@@ -1392,10 +1396,20 @@ func main() {
 			if len(failedS3Upload) != 0 {
 				log.Println("S3 upload failed:")
 				log.Println(failedS3Upload)
+				err2 := sendSlackNotification("S3 upload failed")
+				if err2 != nil {
+					log.Println("sendSlackNotification failed")
+					log.Println(err2)
+				}
 			}
 			if len(failedArtifactoryDownload) != 0 {
 				log.Println("Failed artifactory download:")
 				log.Println(failedArtifactoryDownload)
+				err2 := sendSlackNotification("Artifactory download failed")
+				if err2 != nil {
+					log.Println("sendSlackNotification failed")
+					log.Println(err2)
+				}
 			}
 			os.Exit(1)
 		}

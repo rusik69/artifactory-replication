@@ -215,6 +215,7 @@ func listTags(dockerRegistry string, image string, user string, pass string) ([]
 	var b res
 	err = json.Unmarshal(body, &b)
 	if err != nil {
+		log.Println("docker registry response json unmarshall error")
 		return nil, err
 	}
 	return b.Tags, nil

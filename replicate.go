@@ -945,9 +945,10 @@ func uploadToOss(destinationRegistry string, fileName string, creds Creds, tempF
 	return err
 }
 
-func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string, helmCdnDomain string, force string) {
+func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string, helmCdnDomain string, force string, sourceProdRegistry string) {
 	log.Println("Processing repo " + repo)
 	var replicatedArtifacts uint = 0
+	var replicatedRealArtifacts uint = 0
 	sourceBinariesList, err := listArtifactoryFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
 		err2 := sendSlackNotification(err.Error())
@@ -1001,7 +1002,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			log.Println("Processing source dir: " + fileName)
 			fileNameSplit := strings.Split(fileName, "/")
 			fileNameWithoutRepo := fileNameSplit[len(fileNameSplit)-1]
-			replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileNameWithoutRepo, helmCdnDomain, force)
+			replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileNameWithoutRepo, helmCdnDomain, force, sourceProdRegistry)
 		} else {
 			fileNameSplit := strings.Split(fileName, "/")
 			fileNameWithoutPath := fileNameSplit[len(fileNameSplit)-1]
@@ -1054,12 +1055,16 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 						panic(err)
 					}
 				}
+				if !doSync && !(force == "true") {
+					replicatedRealArtifacts++
+				}
 				replicatedArtifacts++
 				os.Remove(tempFileName)
 			}
 		}
 	}
 	log.Printf("%d artifacts copied to %s\n", replicatedArtifacts, repo)
+	if replicatedRealArtifacts != 
 }
 
 func checkDockerRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds Creds) error {
@@ -1313,6 +1318,7 @@ func main() {
 	if sourceRegistry == "" {
 		panic("empty SOURCE_REGISTRY env variable")
 	}
+	sourceProdRegistry := os.Getenv("SOURCE_PROD_REGISTRY")
 	destinationRegistry := os.Getenv("DESTINATION_REGISTRY")
 	if destinationRegistry == "" {
 		panic("empty DESTINATION_REGISTRY env variable")
@@ -1392,7 +1398,7 @@ func main() {
 		if helmCdnDomain != "" {
 			log.Println("Helm CDN domain: " + helmCdnDomain)
 		}
-		replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, helmCdnDomain, force)
+		replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, helmCdnDomain, force, sourceProdRegistry)
 		if len(failedArtifactoryDownload) != 0 || len(failedS3Upload) != 0 {
 			if len(failedS3Upload) != 0 {
 				log.Println("S3 upload failed:")

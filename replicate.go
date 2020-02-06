@@ -39,6 +39,14 @@ var checkFailedList []string
 var missingRepos, missingRepoTags []string
 var removedTags, skippedTags uint64
 
+// indea.yaml list
+type IndexYaml struct {
+	sourceIndexUrls     []string
+	destinationIndexUrl string
+}
+
+var IndexYamlList []IndexYaml
+
 // Creds source/destination credentials
 type Creds struct {
 	SourceUser          string
@@ -945,7 +953,7 @@ func uploadToOss(destinationRegistry string, fileName string, creds Creds, tempF
 	return err
 }
 
-func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string, helmCdnDomain string, force string, sourceProdRegistry string) {
+func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string, helmCdnDomain string, force string) (uint, uint) {
 	log.Println("Processing repo " + repo)
 	var replicatedArtifacts uint = 0
 	var replicatedRealArtifacts uint = 0
@@ -986,6 +994,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			}
 			panic(err)
 		}
+		log.Println("Found destination binaries:", len(destinationBinariesList))
 	} else if destinationRegistryType == "oss" {
 		destinationBinariesList, err = listOssFiles(destinationRegistry, creds, endpoint)
 		if err != nil {
@@ -996,13 +1005,16 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			}
 			panic(err)
 		}
+		log.Println("Found destination binaries:", len(destinationBinariesList))
 	}
 	for fileName, fileIsDir := range sourceBinariesList {
 		if fileIsDir {
 			log.Println("Processing source dir: " + fileName)
 			fileNameSplit := strings.Split(fileName, "/")
 			fileNameWithoutRepo := fileNameSplit[len(fileNameSplit)-1]
-			replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileNameWithoutRepo, helmCdnDomain, force, sourceProdRegistry)
+			replicatedArtifactsTemp, replicatedRealArtifactsTemp := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileNameWithoutRepo, helmCdnDomain, force)
+			replicatedArtifacts += replicatedArtifactsTemp
+			replicatedRealArtifacts += replicatedRealArtifactsTemp
 		} else {
 			fileNameSplit := strings.Split(fileName, "/")
 			fileNameWithoutPath := fileNameSplit[len(fileNameSplit)-1]
@@ -1064,7 +1076,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 		}
 	}
 	log.Printf("%d artifacts copied to %s\n", replicatedArtifacts, repo)
-	if replicatedRealArtifacts != 
+	return replicatedArtifacts, replicatedRealArtifacts
 }
 
 func checkDockerRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds Creds) error {
@@ -1398,7 +1410,11 @@ func main() {
 		if helmCdnDomain != "" {
 			log.Println("Helm CDN domain: " + helmCdnDomain)
 		}
-		replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, helmCdnDomain, force, sourceProdRegistry)
+		replicatedArtifacts, replicatedRealArtifacts := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, helmCdnDomain, force)
+		replicatedArtifactsProd, replicatedRealArtifactsProd := replicateBinary(creds, sourceProdRegistry, destinationRegistry, destinationRegistryType, imageFilter, helmCdnDomain, force)
+		if replicatedRealArtifacts != 0 || replicatedRealArtifactsProd != 0 {
+
+		}
 		if len(failedArtifactoryDownload) != 0 || len(failedS3Upload) != 0 {
 			if len(failedS3Upload) != 0 {
 				log.Println("S3 upload failed:")

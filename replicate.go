@@ -39,13 +39,12 @@ var checkFailedList []string
 var missingRepos, missingRepoTags []string
 var removedTags, skippedTags uint64
 
-// indea.yaml list
+// index.yaml list
 type IndexYaml struct {
-	sourceIndexUrls     []string
-	destinationIndexUrl string
+	sourceIndexUrls []string
 }
 
-var IndexYamlList []IndexYaml
+var IndexYamls map[string]IndexYaml
 
 // Creds source/destination credentials
 type Creds struct {
@@ -800,7 +799,7 @@ func getS3FileSHA256(S3Bucket string, filename string) (string, error) {
 	return "", errors.New("Missing md5 in metadata")
 }
 
-func downloadFromArtifactory(fileURL string, destinationRegistry string, helmCdnDomain string) (string, error) {
+func downloadFromArtifactory(fileURL string) (string, error) {
 	log.Println("Downloading " + fileURL)
 	resp, err := http.Get(fileURL)
 	if err != nil {
@@ -820,26 +819,6 @@ func downloadFromArtifactory(fileURL string, destinationRegistry string, helmCdn
 	}
 	fileName := tempFile.Name()
 	tempFile.Close()
-	matched, err := regexp.MatchString("/index.yaml$", fileURL)
-	if err != nil {
-		return "", err
-	}
-	if matched && helmCdnDomain != "" {
-		body, err := ioutil.ReadFile(fileName)
-		if err != nil {
-			return "", err
-		}
-		linkToReplace, err := regexp.Compile("(https?://.*?artifactory.*?/(artifactory/)?[^/]*?/)")
-		if err != nil {
-			return "", err
-		}
-		log.Println("Rewriting index.yaml urls...")
-		body = linkToReplace.ReplaceAll(body, []byte("https://"+helmCdnDomain+"/"))
-		err = ioutil.WriteFile(fileName, body, os.FileMode(0644))
-		if err != nil {
-			return "", err
-		}
-	}
 	return fileName, nil
 }
 
@@ -953,10 +932,9 @@ func uploadToOss(destinationRegistry string, fileName string, creds Creds, tempF
 	return err
 }
 
-func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string, helmCdnDomain string, force string) (uint, uint) {
+func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string, helmCdnDomain string, force string) []string {
 	log.Println("Processing repo " + repo)
-	var replicatedArtifacts uint = 0
-	var replicatedRealArtifacts uint = 0
+	var replicatedRealArtifacts []string
 	sourceBinariesList, err := listArtifactoryFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
 		err2 := sendSlackNotification(err.Error())
@@ -1012,9 +990,8 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			log.Println("Processing source dir: " + fileName)
 			fileNameSplit := strings.Split(fileName, "/")
 			fileNameWithoutRepo := fileNameSplit[len(fileNameSplit)-1]
-			replicatedArtifactsTemp, replicatedRealArtifactsTemp := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileNameWithoutRepo, helmCdnDomain, force)
-			replicatedArtifacts += replicatedArtifactsTemp
-			replicatedRealArtifacts += replicatedRealArtifactsTemp
+			replicatedRealArtifactsTemp := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileNameWithoutRepo, helmCdnDomain, force)
+			replicatedRealArtifacts = append(replicatedRealArtifacts, replicatedRealArtifactsTemp)
 		} else {
 			fileNameSplit := strings.Split(fileName, "/")
 			fileNameWithoutPath := fileNameSplit[len(fileNameSplit)-1]
@@ -1035,7 +1012,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 				}
 			}
 			if !fileFound || doSync || force == "true" {
-				tempFileName, err := downloadFromArtifactory(fileURL, destinationRegistry, helmCdnDomain)
+				tempFileName, err := downloadFromArtifactory(fileURL)
 				if err != nil {
 					log.Println("downloadFromArtifactory failed:")
 					log.Println(err)
@@ -1054,6 +1031,14 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 						log.Println(err)
 						failedS3Upload = append(failedS3Upload, destinationFileName)
 						continue
+					}
+					if fileName == "index.yaml"{
+						destinationFileUrl := destinationRegistry + "/" + destinationFileName
+						if val, ok := IndexYamls[dedestinationFileUrl]{
+							IndexYamls[destinationFileUrl].sourceIndexUrls = append(IndexYamls[destinationFileUrl].sourceIndexUrls, fileURL)
+						} else {
+							IndexYamls(destinationFileUrl).sourceIndexUrls = [fileURL]
+						}
 					}
 				} else if destinationRegistryType == "artifactory" {
 					err := uploadToArtifactory(destinationRegistry, repo, fileName, creds.DestinationUser, creds.DestinationPassword, tempFileName)
@@ -1076,7 +1061,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 		}
 	}
 	log.Printf("%d artifacts copied to %s\n", replicatedArtifacts, repo)
-	return replicatedArtifacts, replicatedRealArtifacts
+	return replicatedRealArtifacts
 }
 
 func checkDockerRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds Creds) error {
@@ -1324,21 +1309,37 @@ func sendSlackNotification(msg string) error {
 	return nil
 }
 
+func regenerateIndexYaml(artifactsList []string){
+	for _, fileName := range(artifactsList){
+		if strings.Contains(fileName, "helm"){
+			s:= strings.Split(fileName, "/")
+			filePrefix := strings.Join(s[:len(s)-2], "/")
+			for k, v := range(IndexYamls){
+				ks := strings.Split(k, "/")
+				destinationFilePrefix := strings.Join(ks[3:])
+				if strings.HasPrefix(k, filePrefix){
+					
+					break
+				}
+			}
+		}
+	}
+}
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	sourceRegistry := os.Getenv("SOURCE_REGISTRY")
 	if sourceRegistry == "" {
 		panic("empty SOURCE_REGISTRY env variable")
 	}
-	sourceProdRegistry := os.Getenv("SOURCE_PROD_REGISTRY")
 	destinationRegistry := os.Getenv("DESTINATION_REGISTRY")
 	if destinationRegistry == "" {
 		panic("empty DESTINATION_REGISTRY env variable")
 	}
 	imageFilter := os.Getenv("IMAGE_FILTER")
+	imageFilterProd := os.Getenv("IMAGE_FILTER_PROD")
 	artifactType := os.Getenv("ARTIFACT_TYPE")
 	destinationRegistryType := os.Getenv("DESTINATION_REGISTRY_TYPE")
-	helmCdnDomain := os.Getenv("HELM_CDN_DOMAIN")
 	force := os.Getenv("FORCE")
 	creds := Creds{
 		SourceUser:          os.Getenv("SOURCE_USER"),
@@ -1410,9 +1411,12 @@ func main() {
 		if helmCdnDomain != "" {
 			log.Println("Helm CDN domain: " + helmCdnDomain)
 		}
-		replicatedArtifacts, replicatedRealArtifacts := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, helmCdnDomain, force)
-		replicatedArtifactsProd, replicatedRealArtifactsProd := replicateBinary(creds, sourceProdRegistry, destinationRegistry, destinationRegistryType, imageFilter, helmCdnDomain, force)
-		if replicatedRealArtifacts != 0 || replicatedRealArtifactsProd != 0 {
+		replicatedRealArtifacts := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, helmCdnDomain, force)
+		replicatedRealArtifactsProd := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilterProd, helmCdnDomain, force)
+		if len(replicatedRealArtifacts) != 0 {
+			
+		}
+		if len(replicatedRealArtifactsProd) != 0{
 
 		}
 		if len(failedArtifactoryDownload) != 0 || len(failedS3Upload) != 0 {

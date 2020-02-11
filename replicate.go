@@ -1038,9 +1038,13 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 					if fileName == "index.yaml" {
 						destinationFileUrl := destinationRegistry + "/" + destinationFileName
 						if val, ok := IndexYamls[destinationFileUrl]; ok {
-							IndexYamls[destinationFileUrl].sourceIndexUrls = append(IndexYamls[destinationFileUrl].sourceIndexUrls, fileURL)
+							var x = IndexYamls[destinationFileUrl]
+							x.sourceIndexUrls = append(x.sourceIndexUrls, fileURL)
+							IndexYamls[destinationFileUrl] = x
 						} else {
-							IndexYamls[destinationFileUrl].sourceIndexUrls = list(fileURL)
+							var x = IndexYamls[destinationFileUrl]
+							x.sourceIndexUrls = list(fileURL)
+							IndexYamls[destinationFileUrl] = x
 						}
 					}
 				} else if destinationRegistryType == "artifactory" {

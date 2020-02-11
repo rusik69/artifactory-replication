@@ -933,7 +933,7 @@ func uploadToOss(destinationRegistry string, fileName string, creds Creds, tempF
 	return err
 }
 
-func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string, helmCdnDomain string, force string) []string {
+func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string, force string) []string {
 	log.Println("Processing repo " + repo)
 	var replicatedRealArtifacts []string
 	sourceBinariesList, err := listArtifactoryFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
@@ -991,7 +991,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			log.Println("Processing source dir: " + fileName)
 			fileNameSplit := strings.Split(fileName, "/")
 			fileNameWithoutRepo := fileNameSplit[len(fileNameSplit)-1]
-			replicatedRealArtifactsTemp := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileNameWithoutRepo, helmCdnDomain, force)
+			replicatedRealArtifactsTemp := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileNameWithoutRepo, force)
 			for _, v := range replicatedRealArtifactsTemp {
 				replicatedRealArtifacts = append(replicatedRealArtifacts, v)
 			}
@@ -1037,13 +1037,15 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 					}
 					if fileName == "index.yaml" {
 						destinationFileUrl := destinationRegistry + "/" + destinationFileName
-						if val, ok := IndexYamls[destinationFileUrl]; ok {
+						if _, ok := IndexYamls[destinationFileUrl]; ok {
 							var x = IndexYamls[destinationFileUrl]
 							x.sourceIndexUrls = append(x.sourceIndexUrls, fileURL)
 							IndexYamls[destinationFileUrl] = x
 						} else {
 							var x = IndexYamls[destinationFileUrl]
-							x.sourceIndexUrls = list(fileURL)
+							var fileURLTemp []string
+							fileURLTemp = append(fileURLTemp, fileURL)
+							x.sourceIndexUrls = fileURLTemp
 							IndexYamls[destinationFileUrl] = x
 						}
 					}
@@ -1060,14 +1062,13 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 					}
 				}
 				if !doSync && !(force == "true") {
-					replicatedRealArtifacts++
+					replicatedRealArtifacts = append(replicatedRealArtifacts, destinationRegistry+"/"+destinationFileName)
 				}
-				replicatedArtifacts++
 				os.Remove(tempFileName)
 			}
 		}
 	}
-	log.Printf("%d artifacts copied to %s\n", replicatedArtifacts, repo)
+	log.Printf("%d artifacts copied to %s\n", replicatedRealArtifacts, repo)
 	return replicatedRealArtifacts
 }
 
@@ -1321,11 +1322,11 @@ func regenerateIndexYaml(artifactsList []string) {
 		if strings.Contains(fileName, "helm") {
 			s := strings.Split(fileName, "/")
 			filePrefix := strings.Join(s[:len(s)-2], "/")
-			for k, v := range IndexYamls {
+			for k, _ := range IndexYamls {
 				ks := strings.Split(k, "/")
-				destinationFilePrefix := strings.Join(ks[3:])
+				destinationFilePrefix := strings.Join(ks[3:], "/")
 				if strings.HasPrefix(k, filePrefix) {
-					fmt.Println("hui")
+					fmt.Println(destinationFilePrefix)
 					break
 				}
 			}
@@ -1415,16 +1416,9 @@ func main() {
 			panic("unknown or empty DESTINATION_REGISTRY_TYPE")
 		}
 		log.Println("replicating binary repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry + " bucket")
-		if helmCdnDomain != "" {
-			log.Println("Helm CDN domain: " + helmCdnDomain)
-		}
-		replicatedRealArtifacts := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, helmCdnDomain, force)
-		replicatedRealArtifactsProd := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilterProd, helmCdnDomain, force)
-		if len(replicatedRealArtifacts) != 0 {
-
-		}
-		if len(replicatedRealArtifactsProd) != 0 {
-
+		replicatedRealArtifacts := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, force)
+		if imageFilterProd != "" {
+			replicatedRealArtifactsProd := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilterProd, force)
 		}
 		if len(failedArtifactoryDownload) != 0 || len(failedS3Upload) != 0 {
 			if len(failedS3Upload) != 0 {

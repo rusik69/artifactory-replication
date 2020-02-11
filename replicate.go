@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -991,7 +992,9 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			fileNameSplit := strings.Split(fileName, "/")
 			fileNameWithoutRepo := fileNameSplit[len(fileNameSplit)-1]
 			replicatedRealArtifactsTemp := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileNameWithoutRepo, helmCdnDomain, force)
-			replicatedRealArtifacts = append(replicatedRealArtifacts, replicatedRealArtifactsTemp)
+			for _, v := range replicatedRealArtifactsTemp {
+				replicatedRealArtifacts = append(replicatedRealArtifacts, v)
+			}
 		} else {
 			fileNameSplit := strings.Split(fileName, "/")
 			fileNameWithoutPath := fileNameSplit[len(fileNameSplit)-1]
@@ -1032,12 +1035,12 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 						failedS3Upload = append(failedS3Upload, destinationFileName)
 						continue
 					}
-					if fileName == "index.yaml"{
+					if fileName == "index.yaml" {
 						destinationFileUrl := destinationRegistry + "/" + destinationFileName
-						if val, ok := IndexYamls[dedestinationFileUrl]{
+						if val, ok := IndexYamls[destinationFileUrl]; ok {
 							IndexYamls[destinationFileUrl].sourceIndexUrls = append(IndexYamls[destinationFileUrl].sourceIndexUrls, fileURL)
 						} else {
-							IndexYamls(destinationFileUrl).sourceIndexUrls = [fileURL]
+							IndexYamls[destinationFileUrl].sourceIndexUrls = list(fileURL)
 						}
 					}
 				} else if destinationRegistryType == "artifactory" {
@@ -1309,16 +1312,16 @@ func sendSlackNotification(msg string) error {
 	return nil
 }
 
-func regenerateIndexYaml(artifactsList []string){
-	for _, fileName := range(artifactsList){
-		if strings.Contains(fileName, "helm"){
-			s:= strings.Split(fileName, "/")
+func regenerateIndexYaml(artifactsList []string) {
+	for _, fileName := range artifactsList {
+		if strings.Contains(fileName, "helm") {
+			s := strings.Split(fileName, "/")
 			filePrefix := strings.Join(s[:len(s)-2], "/")
-			for k, v := range(IndexYamls){
+			for k, v := range IndexYamls {
 				ks := strings.Split(k, "/")
 				destinationFilePrefix := strings.Join(ks[3:])
-				if strings.HasPrefix(k, filePrefix){
-					
+				if strings.HasPrefix(k, filePrefix) {
+					fmt.Println("hui")
 					break
 				}
 			}
@@ -1414,9 +1417,9 @@ func main() {
 		replicatedRealArtifacts := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, helmCdnDomain, force)
 		replicatedRealArtifactsProd := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilterProd, helmCdnDomain, force)
 		if len(replicatedRealArtifacts) != 0 {
-			
+
 		}
-		if len(replicatedRealArtifactsProd) != 0{
+		if len(replicatedRealArtifactsProd) != 0 {
 
 		}
 		if len(failedArtifactoryDownload) != 0 || len(failedS3Upload) != 0 {

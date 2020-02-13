@@ -934,7 +934,7 @@ func uploadToOss(destinationRegistry string, fileName string, creds Creds, tempF
 }
 
 func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string, force string) []string {
-	log.Println("Processing repo " + repo)
+	log.Println("Replicating repo " + sourceRegistry + "/" + repo + " to " + destinationRegistry + "/" + repo)
 	var replicatedRealArtifacts []string
 	sourceBinariesList, err := listArtifactoryFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
@@ -1002,7 +1002,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			fileFound := false
 			for destinationFileName := range destinationBinariesList {
 				if destinationFileName == fileName {
-					log.Println("Found binary in destination: " + destinationFileName)
+					//log.Println("Found binary in destination: " + destinationFileName)
 					fileFound = true
 					break
 				}
@@ -1317,7 +1317,7 @@ func sendSlackNotification(msg string) error {
 	return nil
 }
 
-func regenerateIndexYaml(artifactsList []string) {
+func regenerateIndexYaml(artifactsList []string, artifactsListProd []string) error {
 	for _, fileName := range artifactsList {
 		if strings.Contains(fileName, "helm") {
 			s := strings.Split(fileName, "/")
@@ -1417,8 +1417,16 @@ func main() {
 		}
 		log.Println("replicating binary repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry + " bucket")
 		replicatedRealArtifacts := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, force)
+		log.Println(replicatedRealArtifacts)
 		if imageFilterProd != "" {
 			replicatedRealArtifactsProd := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilterProd, force)
+			log.Println(replicatedRealArtifactsProd)
+		}
+		if len(replicatedRealArtifacts) != 0 || len(replicatedRealArtifactsProd) != 0 {
+			err := regenerateIndexYaml(replicatedRealArtifacts, replicatedRealArtifactsProd)
+			if err != nil {
+
+			}
 		}
 		if len(failedArtifactoryDownload) != 0 || len(failedS3Upload) != 0 {
 			if len(failedS3Upload) != 0 {

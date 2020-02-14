@@ -1332,6 +1332,7 @@ func regenerateIndexYaml(artifactsList []string, artifactsListProd []string) err
 			}
 		}
 	}
+	return nil
 }
 
 func main() {
@@ -1418,8 +1419,9 @@ func main() {
 		log.Println("replicating binary repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry + " bucket")
 		replicatedRealArtifacts := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, force)
 		log.Println(replicatedRealArtifacts)
+		var replicatedRealArtifactsProd []string
 		if imageFilterProd != "" {
-			replicatedRealArtifactsProd := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilterProd, force)
+			replicatedRealArtifactsProd = replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilterProd, force)
 			log.Println(replicatedRealArtifactsProd)
 		}
 		if len(replicatedRealArtifacts) != 0 || len(replicatedRealArtifactsProd) != 0 {

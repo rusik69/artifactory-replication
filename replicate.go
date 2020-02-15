@@ -1298,7 +1298,7 @@ func sendSlackNotification(msg string) error {
 	return nil
 }
 
-func regenerateIndexYaml(artifactsList []string, artifactsListProd []string, sourceRepoUrl string, destinationRepoUrl string) error {
+func regenerateIndexYaml(artifactsList []string, artifactsListProd []string, sourceRepoUrl string, destinationRepoUrl string, repo string, prodRepo string) error {
 	fmt.Println("Regenarating index.yamls")
 	files := make(map[string]string)
 	replicatedArtifacts := append(artifactsList, artifactsListProd...)
@@ -1312,11 +1312,24 @@ func regenerateIndexYaml(artifactsList []string, artifactsListProd []string, sou
 		}
 	}
 	for filePrefix, fileRepo := range files {
-		sourceFilePath, err := downloadFromArtifactory("https://" + sourceRepoUrl + "/artifactory/" + fileRepo + "/" + filePrefix + "/index.yaml")
+		sourceFileLocalPath, err := downloadFromArtifactory("https://" + sourceRepoUrl + "/artifactory/" + fileRepo + "/" + filePrefix + "/index.yaml")
 		if err != nil {
 			return err
 		}
-		log.Println(sourceFilePath)
+		var sourceFileLocalPath2 string
+		if fileRepo == repo {
+			sourceFileLocalPath2, err = downloadFromArtifactory("https://" + sourceRepoUrl + "/artifactory/" + prodRepo + "/" + filePrefix + "/index.yaml")
+			if err != nil {
+				return err
+			}
+		} else if fileRepo == prodRepo {
+			sourceFileLocalPath2, err = downloadFromArtifactory("https://" + sourceRepoUrl + "/artifactory/" + repo + "/" + filePrefix + "/index.yaml")
+			if err != nil {
+				return err
+			}
+		}
+		log.Println(sourceFileLocalPath)
+		log.Println(sourceFileLocalPath2)
 	}
 	return nil
 }
@@ -1406,12 +1419,17 @@ func main() {
 		replicatedRealArtifacts := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, force)
 		log.Println(replicatedRealArtifacts)
 		var replicatedRealArtifactsProd []string
+		var repoNameProd string
+		repoName := strings.Split(imageFilter, "/")[0]
+		if len(imageFilterProd) != 0 {
+			repoNameProd = strings.Split(imageFilterProd, "/")[0]
+		}
 		if imageFilterProd != "" {
 			log.Println("Replicating prod repo")
 			replicatedRealArtifactsProd = replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilterProd, force)
 		}
 		if len(replicatedRealArtifacts) != 0 || len(replicatedRealArtifactsProd) != 0 {
-			err := regenerateIndexYaml(replicatedRealArtifacts, replicatedRealArtifactsProd, sourceRegistry, destinationRegistry)
+			err := regenerateIndexYaml(replicatedRealArtifacts, replicatedRealArtifactsProd, sourceRegistry, destinationRegistry, repoName, repoNameProd)
 			if err != nil {
 				panic(err)
 			}

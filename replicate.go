@@ -1062,13 +1062,13 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 					}
 				}
 				if !doSync && !(force == "true") {
-					replicatedRealArtifacts = append(replicatedRealArtifacts, destinationRegistry+"/"+destinationFileName)
+					replicatedRealArtifacts = append(replicatedRealArtifacts, destinationRegistry+destinationFileName)
 				}
 				os.Remove(tempFileName)
 			}
 		}
 	}
-	log.Printf("%d artifacts copied to %s\n", replicatedRealArtifacts, repo)
+	log.Printf("%d artifacts copied to %s\n", len(replicatedRealArtifacts), repo)
 	return replicatedRealArtifacts
 }
 
@@ -1318,15 +1318,20 @@ func sendSlackNotification(msg string) error {
 }
 
 func regenerateIndexYaml(artifactsList []string, artifactsListProd []string) error {
+	fmt.Println("Regenarating index.yamls")
 	for _, fileName := range artifactsList {
+		log.Println(fileName)
 		if strings.Contains(fileName, "helm") {
+			log.Println("found")
 			s := strings.Split(fileName, "/")
 			filePrefix := strings.Join(s[:len(s)-2], "/")
+			log.Println(filePrefix)
 			for k, _ := range IndexYamls {
 				ks := strings.Split(k, "/")
 				destinationFilePrefix := strings.Join(ks[3:], "/")
+				log.Println(destinationFilePrefix)
 				if strings.HasPrefix(k, filePrefix) {
-					fmt.Println(destinationFilePrefix)
+					log.Println("Found: " + destinationFilePrefix)
 					break
 				}
 			}
@@ -1416,18 +1421,18 @@ func main() {
 		if destinationRegistryType != "s3" && destinationRegistryType != "artifactory" && destinationRegistryType != "oss" {
 			panic("unknown or empty DESTINATION_REGISTRY_TYPE")
 		}
-		log.Println("replicating binary repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry + " bucket")
+		log.Println("Replicating dev repo")
 		replicatedRealArtifacts := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, force)
 		log.Println(replicatedRealArtifacts)
 		var replicatedRealArtifactsProd []string
 		if imageFilterProd != "" {
+			log.Println("Replicating prod repo")
 			replicatedRealArtifactsProd = replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilterProd, force)
-			log.Println(replicatedRealArtifactsProd)
 		}
 		if len(replicatedRealArtifacts) != 0 || len(replicatedRealArtifactsProd) != 0 {
 			err := regenerateIndexYaml(replicatedRealArtifacts, replicatedRealArtifactsProd)
 			if err != nil {
-
+				panic(err)
 			}
 		}
 		if len(failedArtifactoryDownload) != 0 || len(failedS3Upload) != 0 {

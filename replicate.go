@@ -30,7 +30,7 @@ import (
 	"github.com/docker/docker/client"
 )
 
-var alwaysSyncList = []string{"index.yaml.sha256", "index.yaml", "get_kaas.sh"}
+var alwaysSyncList = []string{"index.yaml.sha256", "get_kaas.sh"}
 
 var ossProxyRunning bool
 var failedDockerPullRepos, failedDockerPushRepos, failedDockerCleanRepos, failedArtifactoryDownload, failedS3Upload []string
@@ -39,13 +39,6 @@ var checkFailed bool
 var checkFailedList []string
 var missingRepos, missingRepoTags []string
 var removedTags, skippedTags uint64
-
-// index.yaml list
-type IndexYaml struct {
-	sourceIndexUrls []string
-}
-
-var IndexYamls map[string]IndexYaml
 
 // Creds source/destination credentials
 type Creds struct {
@@ -1035,20 +1028,6 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 						failedS3Upload = append(failedS3Upload, destinationFileName)
 						continue
 					}
-					if fileName == "index.yaml" {
-						destinationFileUrl := destinationRegistry + "/" + destinationFileName
-						if _, ok := IndexYamls[destinationFileUrl]; ok {
-							var x = IndexYamls[destinationFileUrl]
-							x.sourceIndexUrls = append(x.sourceIndexUrls, fileURL)
-							IndexYamls[destinationFileUrl] = x
-						} else {
-							var x = IndexYamls[destinationFileUrl]
-							var fileURLTemp []string
-							fileURLTemp = append(fileURLTemp, fileURL)
-							x.sourceIndexUrls = fileURLTemp
-							IndexYamls[destinationFileUrl] = x
-						}
-					}
 				} else if destinationRegistryType == "artifactory" {
 					err := uploadToArtifactory(destinationRegistry, repo, fileName, creds.DestinationUser, creds.DestinationPassword, tempFileName)
 					if err != nil {
@@ -1062,7 +1041,9 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 					}
 				}
 				if !doSync && !(force == "true") {
-					replicatedRealArtifacts = append(replicatedRealArtifacts, destinationRegistry+destinationFileName)
+					fileNameSplit := strings.Split(fileName, "/")
+					fileNameWithoutRepo := fileNameSplit[len(fileNameSplit)-1]
+					replicatedRealArtifacts = append(replicatedRealArtifacts, repo+"/"+fileNameWithoutRepo)
 				}
 				os.Remove(tempFileName)
 			}
@@ -1317,25 +1298,25 @@ func sendSlackNotification(msg string) error {
 	return nil
 }
 
-func regenerateIndexYaml(artifactsList []string, artifactsListProd []string) error {
+func regenerateIndexYaml(artifactsList []string, artifactsListProd []string, sourceRepoUrl string, destinationRepoUrl string) error {
 	fmt.Println("Regenarating index.yamls")
-	for _, fileName := range artifactsList {
-		log.Println(fileName)
+	files := make(map[string]string)
+	replicatedArtifacts := append(artifactsList, artifactsListProd...)
+	for _, fileName := range replicatedArtifacts {
+		log.Println("hui: " + fileName)
 		if strings.Contains(fileName, "helm") {
-			log.Println("found")
 			s := strings.Split(fileName, "/")
-			filePrefix := strings.Join(s[:len(s)-2], "/")
-			log.Println(filePrefix)
-			for k, _ := range IndexYamls {
-				ks := strings.Split(k, "/")
-				destinationFilePrefix := strings.Join(ks[3:], "/")
-				log.Println(destinationFilePrefix)
-				if strings.HasPrefix(k, filePrefix) {
-					log.Println("Found: " + destinationFilePrefix)
-					break
-				}
-			}
+			filePrefix := strings.Join(s[1:len(s)-1], "/")
+			fileRepo := s[0]
+			files[filePrefix] = fileRepo
 		}
+	}
+	for filePrefix, fileRepo := range files {
+		sourceFilePath, err := downloadFromArtifactory("https://" + sourceRepoUrl + "/artifactory/" + fileRepo + "/" + filePrefix + "/index.yaml")
+		if err != nil {
+			return err
+		}
+		log.Println(sourceFilePath)
 	}
 	return nil
 }
@@ -1430,7 +1411,7 @@ func main() {
 			replicatedRealArtifactsProd = replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilterProd, force)
 		}
 		if len(replicatedRealArtifacts) != 0 || len(replicatedRealArtifactsProd) != 0 {
-			err := regenerateIndexYaml(replicatedRealArtifacts, replicatedRealArtifactsProd)
+			err := regenerateIndexYaml(replicatedRealArtifacts, replicatedRealArtifactsProd, sourceRegistry, destinationRegistry)
 			if err != nil {
 				panic(err)
 			}

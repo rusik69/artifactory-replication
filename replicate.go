@@ -27,7 +27,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
-	helmRepo "k8s.io/helm/pkg/repo"
+	"k8s.io/helm/pkg/repo"
 )
 
 var alwaysSyncList = []string{"index.yaml.sha256", "get_kaas.sh"}
@@ -226,7 +226,7 @@ func pullImage(image ImageToReplicate, creds Creds) error {
 	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag
 	log.Println("Pulling " + sourceImage)
 	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv)
+	cli, err := client.NewClientWithOpts(client.FromEnv())
 	if err != nil {
 		return err
 	}
@@ -532,9 +532,9 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 	}
 	var prodSourceFilteredRepos []string
 	if imageFilter != "" {
-		for _, repo := range sourceProdRepos {
-			if strings.HasPrefix(repo, imageFilter) {
-				prodSourceFilteredRepos = append(prodSourceFilteredRepos, repo)
+		for _, sourceRepo := range sourceProdRepos {
+			if strings.HasPrefix(sourceRepo, imageFilter) {
+				prodSourceFilteredRepos = append(prodSourceFilteredRepos, sourceRepo)
 			}
 		}
 	} else {
@@ -642,9 +642,9 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	dockerTag := os.Getenv("DOCKER_TAG")
 	sourceFilteredRepos := sourceRepos[:0]
 	if imageFilter != "" {
-		for _, repo := range sourceRepos {
-			if strings.HasPrefix(repo, imageFilter) {
-				sourceFilteredRepos = append(sourceFilteredRepos, repo)
+		for _, sourceRepo := range sourceRepos {
+			if strings.HasPrefix(sourceRepo, imageFilter) {
+				sourceFilteredRepos = append(sourceFilteredRepos, sourceRepo)
 			}
 		}
 	} else {
@@ -653,9 +653,9 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	log.Println("Found filtered source repos: ", len(sourceFilteredRepos))
 	destinationFilteredRepos := destinationRepos[:0]
 	if imageFilter != "" {
-		for _, repo := range destinationRepos {
-			if strings.HasPrefix(repo, imageFilter) {
-				destinationFilteredRepos = append(destinationFilteredRepos, repo)
+		for _, sourceRepo := range destinationRepos {
+			if strings.HasPrefix(sourceRepo, imageFilter) {
+				destinationFilteredRepos = append(destinationFilteredRepos, sourceRepo)
 			}
 		}
 	} else {
@@ -860,8 +860,8 @@ func computeFileSHA256(filePath string) (string, error) {
 	return returnSHA256, nil
 }
 
-func uploadToArtifactory(destinationRegistry string, repo string, destinationFileName string, destinationUser string, destinationPassword string, tempFileName string) error {
-	url := "https://" + destinationRegistry + "/artifactory/" + repo + destinationFileName
+func uploadToArtifactory(destinationRegistry string, sourceRepo string, destinationFileName string, destinationUser string, destinationPassword string, tempFileName string) error {
+	url := "https://" + destinationRegistry + "/artifactory/" + sourceRepo + destinationFileName
 	log.Println("Uploading: " + url)
 	f, err := os.Open(tempFileName)
 	if err != nil {
@@ -877,13 +877,13 @@ func uploadToArtifactory(destinationRegistry string, repo string, destinationFil
 	return err
 }
 
-func listOssFiles(repo string, creds Creds, endpoint string) (map[string]bool, error) {
+func listOssFiles(sourceRepo string, creds Creds, endpoint string) (map[string]bool, error) {
 	output := make(map[string]bool)
 	ossClient, err := oss.New(endpoint, creds.DestinationUser, creds.DestinationPassword)
 	if err != nil {
 		return output, err
 	}
-	bucket, err := ossClient.Bucket(repo)
+	bucket, err := ossClient.Bucket(sourceRepo)
 	if err != nil {
 		return output, err
 	}
@@ -926,12 +926,12 @@ func uploadToOss(destinationRegistry string, fileName string, creds Creds, tempF
 	return err
 }
 
-func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, repo string, force string) []string {
-	log.Println("Replicating repo " + sourceRegistry + "/" + repo + " to " + destinationRegistry + "/" + repo)
+func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, sourceRepo string, force string) []string {
+	log.Println("Replicating repo " + sourceRegistry + "/" + sourceRepo + " to " + destinationRegistry + "/" + sourceRepo)
 	log.Println("destinationRegistry: " + destinationRegistry)
-	log.Println("repo: " + repo)
+	log.Println("sourceRepo: " + sourceRepo)
 	var replicatedRealArtifacts []string
-	sourceBinariesList, err := listArtifactoryFiles(sourceRegistry, repo, creds.SourceUser, creds.SourcePassword)
+	sourceBinariesList, err := listArtifactoryFiles(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
 		err2 := sendSlackNotification(err.Error())
 		if err2 != nil {
@@ -959,7 +959,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			log.Println("Found destination binaries:", len(destinationBinariesList))
 		}
 	} else if destinationRegistryType == "artifactory" {
-		destinationBinariesList, err = listArtifactoryFiles(destinationRegistry, repo, creds.DestinationUser, creds.DestinationPassword)
+		destinationBinariesList, err = listArtifactoryFiles(destinationRegistry, sourceRepo, creds.DestinationUser, creds.DestinationPassword)
 		if err != nil {
 			err2 := sendSlackNotification(err.Error())
 			if err2 != nil {
@@ -986,14 +986,14 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 			log.Println("Processing source dir: " + fileName)
 			fileNameSplit := strings.Split(fileName, "/")
 			fileNameWithoutRepo := fileNameSplit[len(fileNameSplit)-1]
-			replicatedRealArtifactsTemp := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, repo+"/"+fileNameWithoutRepo, force)
+			replicatedRealArtifactsTemp := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, sourceRepo+"/"+fileNameWithoutRepo, force)
 			for _, v := range replicatedRealArtifactsTemp {
 				replicatedRealArtifacts = append(replicatedRealArtifacts, v)
 			}
 		} else {
 			fileNameSplit := strings.Split(fileName, "/")
 			fileNameWithoutPath := fileNameSplit[len(fileNameSplit)-1]
-			fileURL := "http://" + sourceRegistry + "/artifactory/" + repo + "/" + fileNameWithoutPath
+			fileURL := "http://" + sourceRegistry + "/artifactory/" + sourceRepo + "/" + fileNameWithoutPath
 			fileFound := false
 			for destinationFileName := range destinationBinariesList {
 				if destinationFileName == fileName {
@@ -1017,7 +1017,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 					failedArtifactoryDownload = append(failedArtifactoryDownload, fileURL)
 					continue
 				}
-				repoWithoutPathSplit := strings.Split(repo, "/")
+				repoWithoutPathSplit := strings.Split(sourceRepo, "/")
 				repoWithoutPath := repoWithoutPathSplit[1]
 				destinationFileName := repoWithoutPath + "/" + fileName
 				destinationFileName = destinationFileName[strings.IndexByte(destinationFileName, '/'):]
@@ -1031,7 +1031,7 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 						continue
 					}
 				} else if destinationRegistryType == "artifactory" {
-					err := uploadToArtifactory(destinationRegistry, repo, fileName, creds.DestinationUser, creds.DestinationPassword, tempFileName)
+					err := uploadToArtifactory(destinationRegistry, sourceRepo, fileName, creds.DestinationUser, creds.DestinationPassword, tempFileName)
 					if err != nil {
 						panic(err)
 					}
@@ -1045,13 +1045,13 @@ func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry str
 				if !doSync && !(force == "true") {
 					fileNameSplit := strings.Split(fileName, "/")
 					fileNameWithoutRepo := fileNameSplit[len(fileNameSplit)-1]
-					replicatedRealArtifacts = append(replicatedRealArtifacts, repo+"/"+fileNameWithoutRepo)
+					replicatedRealArtifacts = append(replicatedRealArtifacts, sourceRepo+"/"+fileNameWithoutRepo)
 				}
 				os.Remove(tempFileName)
 			}
 		}
 	}
-	log.Printf("%d artifacts copied to %s\n", len(replicatedRealArtifacts), repo)
+	log.Printf("%d artifacts copied to %s\n", len(replicatedRealArtifacts), sourceRepo)
 	return replicatedRealArtifacts
 }
 
@@ -1300,10 +1300,9 @@ func sendSlackNotification(msg string) error {
 	return nil
 }
 
-func regenerateIndexYaml(artifactsList []string, artifactsListProd []string, sourceRepoUrl string, destinationRepoUrl string, repo string, prodRepo string) error {
+func regenerateIndexYaml(artifactsList []string, artifactsListProd []string, sourceRepoUrl string, destinationRepoUrl string, sourceRepo string, prodRepo string) error {
 	log.Println("Regenarating index.yamls")
 	files := make(map[string]string)
-	helmClient := helm.NewClient(helm.Host(host))
 	replicatedArtifacts := append(artifactsList, artifactsListProd...)
 	for _, fileName := range replicatedArtifacts {
 		if strings.Contains(fileName, "helm") {
@@ -1319,34 +1318,37 @@ func regenerateIndexYaml(artifactsList []string, artifactsListProd []string, sou
 			return err
 		}
 		var sourceFileLocalPath2 string
-		if fileRepo == repo {
+		if fileRepo == sourceRepo {
 			sourceFileLocalPath2, err = downloadFromArtifactory("https://" + sourceRepoUrl + "/artifactory/" + prodRepo + "/" + filePrefix + "/index.yaml")
 			if err != nil {
 				return err
 			}
 		} else if fileRepo == prodRepo {
-			sourceFileLocalPath2, err = downloadFromArtifactory("https://" + sourceRepoUrl + "/artifactory/" + repo + "/" + filePrefix + "/index.yaml")
+			sourceFileLocalPath2, err = downloadFromArtifactory("https://" + sourceRepoUrl + "/artifactory/" + sourceRepo + "/" + filePrefix + "/index.yaml")
 			if err != nil {
 				return err
 			}
 		}
 		log.Println(sourceFileLocalPath)
 		log.Println(sourceFileLocalPath2)
-		sourceIndexFile, err := helmRepo.LoadIndexFile(sourceFileLocalPath)
+		sourceIndexFile, err := repo.LoadIndexFile(sourceFileLocalPath)
 		if err != nil {
 			return err
 		}
-		sourceIndexFile2, err := helmRepo.LoadIndexFile(sourceFileLocalPath2)
+		sourceIndexFile2, err := repo.LoadIndexFile(sourceFileLocalPath2)
 		if err != nil {
 			return err
 		}
 		sourceIndexFile.Merge(sourceIndexFile2)
 		tempFile, err := ioutil.TempFile("", "index-yaml")
 		if err != nil {
-			return "", err
+			return err
 		}
-		sourceIndexFile.WriteFile(tempFile.Name(), "0644")
-		uploadToS3(destinationRepoUrl)
+		sourceIndexFile.WriteFile(tempFile.Name(), 0644)
+		err = uploadToS3(destinationRepoUrl, sourceRepo+"/"+filePrefix+"/index.yaml", tempFile.Name())
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

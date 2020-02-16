@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -28,6 +27,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
+	"k8s.io/helm/pkg/helm"
 )
 
 var alwaysSyncList = []string{"index.yaml.sha256", "get_kaas.sh"}
@@ -1301,8 +1301,9 @@ func sendSlackNotification(msg string) error {
 }
 
 func regenerateIndexYaml(artifactsList []string, artifactsListProd []string, sourceRepoUrl string, destinationRepoUrl string, repo string, prodRepo string) error {
-	fmt.Println("Regenarating index.yamls")
+	log.Println("Regenarating index.yamls")
 	files := make(map[string]string)
+	helmClient := helm.NewClient(helm.Host(host))
 	replicatedArtifacts := append(artifactsList, artifactsListProd...)
 	for _, fileName := range replicatedArtifacts {
 		if strings.Contains(fileName, "helm") {

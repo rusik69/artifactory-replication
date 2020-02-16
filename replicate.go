@@ -27,7 +27,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
-	"k8s.io/helm/pkg/helm"
+	helmRepo "k8s.io/helm/pkg/repo"
 )
 
 var alwaysSyncList = []string{"index.yaml.sha256", "get_kaas.sh"}
@@ -1332,6 +1332,21 @@ func regenerateIndexYaml(artifactsList []string, artifactsListProd []string, sou
 		}
 		log.Println(sourceFileLocalPath)
 		log.Println(sourceFileLocalPath2)
+		sourceIndexFile, err := helmRepo.LoadIndexFile(sourceFileLocalPath)
+		if err != nil {
+			return err
+		}
+		sourceIndexFile2, err := helmRepo.LoadIndexFile(sourceFileLocalPath2)
+		if err != nil {
+			return err
+		}
+		sourceIndexFile.Merge(sourceIndexFile2)
+		tempFile, err := ioutil.TempFile("", "index-yaml")
+		if err != nil {
+			return "", err
+		}
+		sourceIndexFile.WriteFile(tempFile.Name(), "0644")
+		uploadToS3(destinationRepoUrl)
 	}
 	return nil
 }

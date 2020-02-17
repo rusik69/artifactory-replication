@@ -928,8 +928,6 @@ func uploadToOss(destinationRegistry string, fileName string, creds Creds, tempF
 
 func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, sourceRepo string, force string) []string {
 	log.Println("Replicating repo " + sourceRegistry + "/" + sourceRepo + " to " + destinationRegistry + "/" + sourceRepo)
-	log.Println("destinationRegistry: " + destinationRegistry)
-	log.Println("sourceRepo: " + sourceRepo)
 	var replicatedRealArtifacts []string
 	sourceBinariesList, err := listArtifactoryFiles(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
@@ -1343,7 +1341,7 @@ func regenerateIndexYaml(artifactsList []string, artifactsListProd []string, sou
 			return err
 		}
 		sourceIndexFile.WriteFile(tempFile.Name(), 0644)
-		err = uploadToS3(destinationRepoUrl, sourceRepo+"/"+filePrefix+"/index.yaml", tempFile.Name())
+		err = uploadToS3(destinationRepoUrl, filePrefix+"/index.yaml", tempFile.Name())
 		if err != nil {
 			return err
 		}

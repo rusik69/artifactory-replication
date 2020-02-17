@@ -1443,7 +1443,7 @@ func main() {
 			log.Println("Replicating prod repo")
 			replicatedRealArtifactsProd = replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilterProd, force)
 		}
-		if len(replicatedRealArtifacts) != 0 || len(replicatedRealArtifactsProd) != 0 {
+		if (len(replicatedRealArtifacts) != 0 || len(replicatedRealArtifactsProd) != 0) && imageFilterProd != "" {
 			err := regenerateIndexYaml(replicatedRealArtifacts, replicatedRealArtifactsProd, sourceRegistry, destinationRegistry, repoName, repoNameProd)
 			if err != nil {
 				panic(err)

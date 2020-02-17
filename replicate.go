@@ -226,7 +226,7 @@ func pullImage(image ImageToReplicate, creds Creds) error {
 	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag
 	log.Println("Pulling " + sourceImage)
 	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv())
+	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		return err
 	}

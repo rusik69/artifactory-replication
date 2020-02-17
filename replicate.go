@@ -1329,8 +1329,6 @@ func regenerateIndexYaml(artifactsList []string, artifactsListProd []string, sou
 				return err
 			}
 		}
-		log.Println(sourceFileLocalPath)
-		log.Println(sourceFileLocalPath2)
 		sourceIndexFile, err := repo.LoadIndexFile(sourceFileLocalPath)
 		if err != nil {
 			return err

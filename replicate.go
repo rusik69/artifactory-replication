@@ -508,7 +508,7 @@ func dockerRemoveTag(registry string, image string, tag string, destinationRegis
 	return nil
 }
 
-func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFilteredRepos []string, imageFilter string, destinationRegistry string, creds Creds, destinationRegistryType string) {
+func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFilteredRepos []string, artifactFilter string, destinationRegistry string, creds Creds, destinationRegistryType string) {
 	log.Println("Cleaning repo:", destinationRegistry)
 	sourceProdRegistry := os.Getenv("SOURCE_PROD_REGISTRY")
 	if sourceProdRegistry == "" {
@@ -531,9 +531,9 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 		panic(err)
 	}
 	var prodSourceFilteredRepos []string
-	if imageFilter != "" {
+	if artifactFilter != "" {
 		for _, sourceRepo := range sourceProdRepos {
-			if strings.HasPrefix(sourceRepo, imageFilter) {
+			if strings.HasPrefix(sourceRepo, artifactFilter) {
 				prodSourceFilteredRepos = append(prodSourceFilteredRepos, sourceRepo)
 			}
 		}
@@ -608,7 +608,7 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 	log.Println("Skipped", skippedTags, "tags")
 }
 
-func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry string, imageFilter string, destinationRegistryType string) {
+func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry string, artifactFilter string, destinationRegistryType string) {
 	var copiedArtifacts uint = 0
 	var reposLimit string
 	if destinationRegistryType == "aws" {
@@ -641,9 +641,9 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	dockerRepoPrefix := os.Getenv("DOCKER_REPO_PREFIX")
 	dockerTag := os.Getenv("DOCKER_TAG")
 	sourceFilteredRepos := sourceRepos[:0]
-	if imageFilter != "" {
+	if artifactFilter != "" {
 		for _, sourceRepo := range sourceRepos {
-			if strings.HasPrefix(sourceRepo, imageFilter) {
+			if strings.HasPrefix(sourceRepo, artifactFilter) {
 				sourceFilteredRepos = append(sourceFilteredRepos, sourceRepo)
 			}
 		}
@@ -652,9 +652,9 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	}
 	log.Println("Found filtered source repos: ", len(sourceFilteredRepos))
 	destinationFilteredRepos := destinationRepos[:0]
-	if imageFilter != "" {
+	if artifactFilter != "" {
 		for _, sourceRepo := range destinationRepos {
-			if strings.HasPrefix(sourceRepo, imageFilter) {
+			if strings.HasPrefix(sourceRepo, artifactFilter) {
 				destinationFilteredRepos = append(destinationFilteredRepos, sourceRepo)
 			}
 		}
@@ -664,7 +664,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	log.Println("Found filtered destination repos: ", len(destinationFilteredRepos))
 	dockerCleanup := os.Getenv("DOCKER_CLEAN")
 	if dockerCleanup == "true" {
-		dockerClean(reposLimit, sourceFilteredRepos, destinationFilteredRepos, imageFilter, destinationRegistry, creds, destinationRegistryType)
+		dockerClean(reposLimit, sourceFilteredRepos, destinationFilteredRepos, artifactFilter, destinationRegistry, creds, destinationRegistryType)
 		return
 	}
 	for _, sourceRepo := range sourceFilteredRepos {
@@ -1379,8 +1379,8 @@ func main() {
 	if destinationRegistry == "" {
 		panic("empty DESTINATION_REGISTRY env variable")
 	}
-	imageFilter := os.Getenv("IMAGE_FILTER")
-	imageFilterProd := os.Getenv("IMAGE_FILTER_PROD")
+	artifactFilter := os.Getenv("ARTIFACT_FILTER")
+	artifactFilterProd := os.Getenv("ARTIFACT_FILTER_PROD")
 	artifactType := os.Getenv("ARTIFACT_TYPE")
 	destinationRegistryType := os.Getenv("DESTINATION_REGISTRY_TYPE")
 	force := os.Getenv("FORCE")
@@ -1393,7 +1393,7 @@ func main() {
 	checkReposFlag := os.Getenv("CHECK_REPOS")
 	if checkReposFlag == "true" {
 		if artifactType == "docker" || artifactType == "binary" {
-			checkRepos(sourceRegistry, destinationRegistry, creds, artifactType, destinationRegistryType, imageFilter)
+			checkRepos(sourceRegistry, destinationRegistry, creds, artifactType, destinationRegistryType, artifactFilter)
 		} else {
 			log.Println("unknown artifact type: ", artifactType)
 			os.Exit(1)
@@ -1401,8 +1401,8 @@ func main() {
 		os.Exit(0)
 	}
 	if artifactType == "docker" {
-		if imageFilter != "" {
-			log.Println("Replicating docker images repo " + imageFilter + " from " + sourceRegistry + " to " + destinationRegistry)
+		if artifactFilter != "" {
+			log.Println("Replicating docker images repo " + artifactFilter + " from " + sourceRegistry + " to " + destinationRegistry)
 		} else {
 			log.Println("Replicating docker images from " + sourceRegistry + " to " + destinationRegistry)
 		}
@@ -1429,7 +1429,7 @@ func main() {
 				panic("unknown DESTINATION_REGISTRY_TYPE")
 			}
 		}
-		replicateDocker(creds, sourceRegistry, destinationRegistry, imageFilter, destinationRegistryType)
+		replicateDocker(creds, sourceRegistry, destinationRegistry, artifactFilter, destinationRegistryType)
 		if len(failedDockerPushRepos) != 0 || len(failedDockerPullRepos) != 0 || len(failedDockerCleanRepos) != 0 {
 			log.Println("Failed docker operations:")
 			if len(failedDockerPushRepos) != 0 {
@@ -1450,7 +1450,7 @@ func main() {
 		if destinationRegistryType != "s3" && destinationRegistryType != "artifactory" && destinationRegistryType != "oss" {
 			panic("unknown or empty DESTINATION_REGISTRY_TYPE")
 		}
-		if imageFilterProd == "" {
+		if artifactFilterProd == "" {
 			alwaysSyncList = append(alwaysSyncList, "index.yaml")
 		}
 		helmCdnDomain := os.Getenv("HELM_CDN_DOMAIN")
@@ -1458,19 +1458,19 @@ func main() {
 		if helmCdnDomain != "" {
 			log.Println("Helm CDN domain: " + helmCdnDomain)
 		}
-		replicatedRealArtifacts := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilter, force, helmCdnDomain)
+		replicatedRealArtifacts := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, artifactFilter, force, helmCdnDomain)
 		log.Println(replicatedRealArtifacts)
 		var replicatedRealArtifactsProd []string
 		var repoNameProd string
-		repoName := strings.Split(imageFilter, "/")[0]
-		if len(imageFilterProd) != 0 {
-			repoNameProd = strings.Split(imageFilterProd, "/")[0]
+		repoName := strings.Split(artifactFilter, "/")[0]
+		if len(artifactFilterProd) != 0 {
+			repoNameProd = strings.Split(artifactFilterProd, "/")[0]
 		}
-		if imageFilterProd != "" {
+		if artifactFilterProd != "" {
 			log.Println("Replicating prod repo")
-			replicatedRealArtifactsProd = replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, imageFilterProd, force, helmCdnDomain)
+			replicatedRealArtifactsProd = replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, artifactFilterProd, force, helmCdnDomain)
 		}
-		if (len(replicatedRealArtifacts) != 0 || len(replicatedRealArtifactsProd) != 0) && imageFilterProd != "" {
+		if (len(replicatedRealArtifacts) != 0 || len(replicatedRealArtifactsProd) != 0) && artifactFilterProd != "" {
 			err := regenerateIndexYaml(replicatedRealArtifacts, replicatedRealArtifactsProd, sourceRegistry, destinationRegistry, repoName, repoNameProd, helmCdnDomain)
 			if err != nil {
 				panic(err)

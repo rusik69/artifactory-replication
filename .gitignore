@@ -1,2 +1,4 @@
 .idea/*
 replicate
+go.sum
+artifactory-replication

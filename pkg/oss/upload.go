@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/aliyun/aliyun-oss-go-sdk/oss"
+	"github.com/loqutus/aliyun-oss-go-sdk/oss"
 )
 
 func uploadToOss(destinationRegistry string, fileName string, creds Creds, tempFileName string, endpoint string) error {

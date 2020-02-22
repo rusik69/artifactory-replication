@@ -1,12 +1,11 @@
 package s3
 
 import (
-	"log"
-	"os"
+	"errors"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 func getS3FileSHA256(S3Bucket string, filename string) (string, error) {

@@ -1,8 +1,17 @@
 package docker
 
-import "log"
+import (
+	"log"
 
-func checkDockerRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds Creds) error {
+	"github.com/loqutus/artifactory-replication/pkg/credentials"
+)
+
+var checkFailed bool
+var checkFailedList []string
+var missingRepos, missingRepoTags []string
+var removedTags, skippedTags uint64
+
+func CheckRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds credentials.Creds) error {
 	var reposLimit string
 	if destinationRegistryType == "aws" {
 		reposLimit = "1000"

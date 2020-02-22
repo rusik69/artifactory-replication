@@ -7,9 +7,10 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/loqutus/artifactory-replication/pkg/binary"
 )
 
-func uploadToS3(destinationRegistry string, destinationFileName string, tempFileName string) error {
+func Upload(destinationRegistry string, destinationFileName string, tempFileName string) error {
 	f, err := os.Open(tempFileName)
 	if err != nil {
 		return err
@@ -22,7 +23,7 @@ func uploadToS3(destinationRegistry string, destinationFileName string, tempFile
 		u.PartSize = 5 * 1024 * 1024 // The minimum/default allowed part size is 5MB
 		u.Concurrency = 2            // default is 5
 	})
-	fileSHA256, err := computeFileSHA256(tempFileName)
+	fileSHA256, err := binary.ComputeFileSHA256(tempFileName)
 	if err != nil {
 		return err
 	}

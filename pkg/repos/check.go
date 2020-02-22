@@ -3,13 +3,17 @@ package repos
 import (
 	"log"
 	"os"
+
+	"github.com/loqutus/artifactory-replication/pkg/credentials"
+	"github.com/loqutus/artifactory-replication/pkg/docker"
+	"github.com/loqutus/artifactory-replication/pkg/slack"
 )
 
-func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, artifactType string, destinationRegistryType string, dir string) {
+func Check(sourceRegistry string, destinationRegistry string, creds credentials.Creds, artifactType string, destinationRegistryType string, dir string) {
 	log.Println("Checking " + destinationRegistryType + " repo consistency between " + sourceRegistry + " and " + destinationRegistry)
 	var slackMessage string
 	if artifactType == "docker" {
-		err := checkDockerRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds)
+		err := docker.CheckRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds)
 		if err != nil {
 			err := sendSlackNotification(err.Error())
 			if err != nil {
@@ -33,7 +37,7 @@ func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, 
 					slackMessage += missingRepoTag + "\n"
 				}
 			}
-			err := sendSlackNotification(slackMessage)
+			err := slack.SendMessage(slackMessage)
 			if err != nil {
 				panic(err)
 			}
@@ -45,7 +49,7 @@ func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, 
 	} else if artifactType == "binary" {
 		err := checkBinaryRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds, dir)
 		if err != nil {
-			err := sendSlackNotification(err.Error())
+			err := slack.SendMessage(err.Error())
 			if err != nil {
 				panic(err)
 			}
@@ -57,7 +61,7 @@ func checkRepos(sourceRegistry string, destinationRegistry string, creds Creds, 
 			for _, file := range checkFailedList {
 				slackMessage += file + "\n"
 			}
-			err := sendSlackNotification(slackMessage)
+			err := slack.SendMessage(slackMessage)
 			if err != nil {
 				panic(err)
 			}

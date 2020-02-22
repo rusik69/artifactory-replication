@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func sendSlackNotification(msg string) error {
+func SendMessage(msg string) error {
 	slackWebhook := os.Getenv("SLACK_WEBHOOK")
 	channel := os.Getenv("SLACK_CHANNEL")
 	user := os.Getenv("SLACK_USER")

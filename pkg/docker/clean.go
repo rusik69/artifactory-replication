@@ -1,3 +1,4 @@
+package docker
 
 import (
 	"log"
@@ -5,9 +6,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/loqutus/artifactory-replication/pkg/credentials"
 )
 
-func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFilteredRepos []string, artifactFilter string, destinationRegistry string, creds Creds, destinationRegistryType string) {
+func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFilteredRepos []string, artifactFilter string, destinationRegistry string, creds credentials.Creds, destinationRegistryType string) {
 	log.Println("Cleaning repo:", destinationRegistry)
 	sourceProdRegistry := os.Getenv("SOURCE_PROD_REGISTRY")
 	if sourceProdRegistry == "" {

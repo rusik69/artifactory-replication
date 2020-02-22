@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func replicateBinary(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, sourceRepo string, force string, helmCdnDomain string) []string {
+func Replicate(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, sourceRepo string, force string, helmCdnDomain string) []string {
 	log.Println("Replicating repo " + sourceRegistry + "/" + sourceRepo + " to " + destinationRegistry + "/" + sourceRepo)
 	var replicatedRealArtifacts []string
 	sourceBinariesList, err := listArtifactoryFiles(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)

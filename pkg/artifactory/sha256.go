@@ -2,7 +2,7 @@ package artifactory
 
 import (
 	"encoding/json"
-	"ioutil"
+	"io/ioutil"
 	"net/http"
 )
 

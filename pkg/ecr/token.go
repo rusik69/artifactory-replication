@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ecr"
 )
 
-func getAwsEcrToken() (string, string, error) {
+func GetToken() (string, string, error) {
 	sess, err := session.NewSession(&aws.Config{})
 	if err != nil {
 		return "", "", err

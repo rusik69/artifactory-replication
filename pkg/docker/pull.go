@@ -13,9 +13,10 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
+	"github.com/loqutus/artifactory-replication/pkg/credentials"
 )
 
-func pullImage(image ImageToReplicate, creds Creds) error {
+func pullImage(image ImageToReplicate, creds credentials.Creds) error {
 	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag
 	log.Println("Pulling " + sourceImage)
 	ctx := context.Background()

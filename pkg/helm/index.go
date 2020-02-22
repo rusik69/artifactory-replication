@@ -5,11 +5,13 @@ import (
 	"log"
 	"strings"
 
+	"github.com/loqutus/artifactory-replication/pkg/artifactory"
+	"github.com/loqutus/artifactory-replication/pkg/s3"
 	"k8s.io/helm/pkg/repo"
 )
 
-func regenerateIndexYaml(artifactsList []string, artifactsListProd []string, sourceRepoUrl string, destinationRepoUrl string, sourceRepo string, prodRepo string, helmCdnDomain string) error {
-	log.Println("Regenarating index.yamls")
+func RegenerateIndexYaml(artifactsList []string, artifactsListProd []string, sourceRepoUrl string, destinationRepoUrl string, sourceRepo string, prodRepo string, helmCdnDomain string) error {
+	log.Println("Regenerating index.yamls")
 	files := make(map[string]string)
 	replicatedArtifacts := append(artifactsList, artifactsListProd...)
 	for _, fileName := range replicatedArtifacts {
@@ -21,18 +23,18 @@ func regenerateIndexYaml(artifactsList []string, artifactsListProd []string, sou
 		}
 	}
 	for filePrefix, fileRepo := range files {
-		sourceFileLocalPath, err := downloadFromArtifactory("https://"+sourceRepoUrl+"/artifactory/"+fileRepo+"/"+filePrefix+"/index.yaml", helmCdnDomain)
+		sourceFileLocalPath, err := artifactory.Download("https://"+sourceRepoUrl+"/artifactory/"+fileRepo+"/"+filePrefix+"/index.yaml", helmCdnDomain)
 		if err != nil {
 			return err
 		}
 		var sourceFileLocalPath2 string
 		if fileRepo == sourceRepo {
-			sourceFileLocalPath2, err = downloadFromArtifactory("https://"+sourceRepoUrl+"/artifactory/"+prodRepo+"/"+filePrefix+"/index.yaml", helmCdnDomain)
+			sourceFileLocalPath2, err = artifactory.Download("https://"+sourceRepoUrl+"/artifactory/"+prodRepo+"/"+filePrefix+"/index.yaml", helmCdnDomain)
 			if err != nil {
 				return err
 			}
 		} else if fileRepo == prodRepo {
-			sourceFileLocalPath2, err = downloadFromArtifactory("https://"+sourceRepoUrl+"/artifactory/"+sourceRepo+"/"+filePrefix+"/index.yaml", helmCdnDomain)
+			sourceFileLocalPath2, err = artifactory.Download("https://"+sourceRepoUrl+"/artifactory/"+sourceRepo+"/"+filePrefix+"/index.yaml", helmCdnDomain)
 			if err != nil {
 				return err
 			}
@@ -51,7 +53,7 @@ func regenerateIndexYaml(artifactsList []string, artifactsListProd []string, sou
 			return err
 		}
 		sourceIndexFile.WriteFile(tempFile.Name(), 0644)
-		err = uploadToS3(destinationRepoUrl, filePrefix+"/index.yaml", tempFile.Name())
+		err = s3.Upload(destinationRepoUrl, filePrefix+"/index.yaml", tempFile.Name())
 		if err != nil {
 			return err
 		}

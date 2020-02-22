@@ -3,19 +3,24 @@ package binary
 import (
 	"log"
 	"strings"
+
+	"github.com/loqutus/artifactory-replication/pkg/artifactory"
+	"github.com/loqutus/artifactory-replication/pkg/s3"
 )
+
+var destinationBinariesList map[string]bool
 
 func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds Creds, dir string) error {
 	log.Println("Getting source repos from: " + sourceRegistry)
-	sourceFilesWithDirs, err := listArtifactoryFiles(sourceRegistry, dir, creds.SourceUser, creds.SourcePassword)
+	sourceFilesWithDirs, err := artifactory.ListFiles(sourceRegistry, dir, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
-		log.Println("listArtifactorFiles failed")
+		log.Println("artifactory.ListFiles failed")
 		return err
 	}
 	if len(destinationBinariesList) == 0 {
-		destinationBinariesList, err = listS3Files(destinationRegistry)
+		destinationBinariesList, err = s3.ListFiles(destinationRegistry)
 		if err != nil {
-			log.Println("listS3Files failed")
+			log.Println("s3.ListFiles failed")
 			return err
 		}
 	}

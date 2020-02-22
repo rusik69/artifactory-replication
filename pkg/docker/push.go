@@ -11,9 +11,10 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
+	"github.com/loqutus/artifactory-replication/pkg/credentials"
 )
 
-func pushImage(image ImageToReplicate, creds Creds) error {
+func pushImage(image ImageToReplicate, creds credentials.Creds) error {
 	destinationImage := image.DestinationRegistry + "/" + image.DestinationImage + ":" + image.DestinationTag
 	log.Println("Pushing " + destinationImage)
 	sourceImage := image.SourceRegistry + "/" + image.SourceImage + ":" + image.SourceTag

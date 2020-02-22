@@ -8,9 +8,23 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ecr"
+	"github.com/loqutus/artifactory-replication/pkg/credentials"
+	"github.com/loqutus/artifactory-replication/pkg/slack"
 )
 
-func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryType string, repoFound *bool, dockerRepoPrefix string) error {
+var failedDockerPullRepos, failedDockerPushRepos, failedDockerCleanRepos []string
+
+// ImageToReplicate source/desination image parameters
+type ImageToReplicate struct {
+	SourceRegistry      string
+	SourceImage         string
+	DestinationRegistry string
+	DestinationImage    string
+	SourceTag           string
+	DestinationTag      string
+}
+
+func doReplicateDocker(image ImageToReplicate, creds credentials.Creds, destinationRegistryType string, repoFound *bool, dockerRepoPrefix string) error {
 	err := pullImage(image, creds)
 	if err != nil {
 		log.Println(err)
@@ -64,7 +78,7 @@ func doReplicateDocker(image ImageToReplicate, creds Creds, destinationRegistryT
 	return nil
 }
 
-func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry string, artifactFilter string, destinationRegistryType string) {
+func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegistry string, artifactFilter string, destinationRegistryType string) {
 	var copiedArtifacts uint = 0
 	var reposLimit string
 	if destinationRegistryType == "aws" {
@@ -75,7 +89,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	log.Println("Getting repos from source registry: " + sourceRegistry)
 	sourceRepos, err := getRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword, reposLimit)
 	if err != nil {
-		err2 := sendSlackNotification(err.Error())
+		err2 := slack.SendMessage(err.Error())
 		if err2 != nil {
 			log.Println(err)
 			panic(err2)
@@ -86,7 +100,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	log.Println("Getting repos from destination from destination registry: " + destinationRegistry)
 	destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword, reposLimit)
 	if err != nil {
-		err2 := sendSlackNotification(err.Error())
+		err2 := slack.SendMessage(err.Error())
 		if err2 != nil {
 			log.Println(err)
 			panic(err2)
@@ -126,7 +140,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 	for _, sourceRepo := range sourceFilteredRepos {
 		sourceTags, err := listTags(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)
 		if err != nil {
-			err2 := sendSlackNotification(err.Error())
+			err2 := slack.SendMessage(err.Error())
 			if err2 != nil {
 				log.Println(err)
 				panic(err2)
@@ -167,7 +181,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 				log.Println("Destination repo not found: " + sourceRepo)
 				err := doReplicateDocker(image, creds, destinationRegistryType, &repoFound, dockerRepoPrefix)
 				if err != nil {
-					err2 := sendSlackNotification(err.Error())
+					err2 := slack.SendMessage(err.Error())
 					if err2 != nil {
 						log.Println(err)
 						panic(err2)
@@ -183,7 +197,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 				}
 				destinationTags, err := listTags(destinationRegistry, destinationRepo, creds.DestinationUser, creds.DestinationPassword)
 				if err != nil {
-					err2 := sendSlackNotification(err.Error())
+					err2 := slack.SendMessage(err.Error())
 					if err2 != nil {
 						log.Println(err)
 						panic(err2)
@@ -203,7 +217,7 @@ func replicateDocker(creds Creds, sourceRegistry string, destinationRegistry str
 					log.Println("Repo tag: " + sourceRepo + ":" + sourceTag + " not found at destination, replicating...")
 					err := doReplicateDocker(image, creds, destinationRegistryType, &repoFound, dockerRepoPrefix)
 					if err != nil {
-						err2 := sendSlackNotification(err.Error())
+						err2 := slack.SendMessage(err.Error())
 						if err2 != nil {
 							log.Println(err)
 							panic(err2)

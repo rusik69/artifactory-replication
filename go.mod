@@ -16,6 +16,7 @@ require (
 	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/golang/protobuf v1.3.3 // indirect
+	github.com/loqutus/aliyun-oss-go-sdk v2.0.3+incompatible
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	golang.org/x/crypto v0.0.0-20200214034016-1d94cc7ab1c6 // indirect

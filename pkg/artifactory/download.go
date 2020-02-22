@@ -3,14 +3,14 @@ package artifactory
 import (
 	"errors"
 	"io"
-	"ioutil"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"regexp"
 )
 
-func downloadFromArtifactory(fileURL string, helmCdnDomain string) (string, error) {
+func Download(fileURL string, helmCdnDomain string) (string, error) {
 	log.Println("Downloading " + fileURL)
 	resp, err := http.Get(fileURL)
 	if err != nil {

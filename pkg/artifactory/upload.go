@@ -1,6 +1,7 @@
 package artifactory
 
 import (
+	"log"
 	"net/http"
 	"os"
 )

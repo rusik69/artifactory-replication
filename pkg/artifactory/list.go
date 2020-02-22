@@ -2,12 +2,12 @@ package artifactory
 
 import (
 	"encoding/json"
-	"ioutil"
+	"io/ioutil"
 	"net/http"
 	"strings"
 )
 
-func listArtifactoryFiles(host string, dir string, user string, pass string) (map[string]bool, error) {
+func ListFiles(host string, dir string, user string, pass string) (map[string]bool, error) {
 	url := "https://" + host + "/artifactory/api/storage/" + dir
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)

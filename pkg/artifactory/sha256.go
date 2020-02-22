@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-func getArtifactoryFileSHA256(host string, fileName string, user string, pass string) (string, error) {
+func GetArtifactoryFileSHA256(host string, fileName string, user string, pass string) (string, error) {
 	url := "https://" + host + "/artifactory/api/storage/" + fileName
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)

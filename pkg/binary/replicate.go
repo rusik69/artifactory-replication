@@ -4,14 +4,20 @@ import (
 	"log"
 	"os"
 	"strings"
+
+	"github.com/loqutus/artifactory-replication/pkg/artifactory"
+	"github.com/loqutus/artifactory-replication/pkg/credentials"
+	"github.com/loqutus/artifactory-replication/pkg/oss"
+	"github.com/loqutus/artifactory-replication/pkg/s3"
+	"github.com/loqutus/artifactory-replication/pkg/slack"
 )
 
-func Replicate(creds Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, sourceRepo string, force string, helmCdnDomain string) []string {
+func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, sourceRepo string, force string, helmCdnDomain string) []string {
 	log.Println("Replicating repo " + sourceRegistry + "/" + sourceRepo + " to " + destinationRegistry + "/" + sourceRepo)
 	var replicatedRealArtifacts []string
-	sourceBinariesList, err := listArtifactoryFiles(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)
+	sourceBinariesList, err := artifactory.ListFiles(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
-		err2 := sendSlackNotification(err.Error())
+		err2 := slack.sendMessage(err.Error())
 		if err2 != nil {
 			log.Println(err)
 			panic(err2)
@@ -25,9 +31,9 @@ func Replicate(creds Creds, sourceRegistry string, destinationRegistry string, d
 	}
 	if destinationRegistryType == "s3" {
 		if len(destinationBinariesList) == 0 {
-			destinationBinariesList, err = listS3Files(destinationRegistry)
+			destinationBinariesList, err = s3.ListFiles(destinationRegistry)
 			if err != nil {
-				err2 := sendSlackNotification(err.Error())
+				err2 := slack.sendMessage(err.Error())
 				if err2 != nil {
 					log.Println(err)
 					panic(err2)
@@ -37,9 +43,9 @@ func Replicate(creds Creds, sourceRegistry string, destinationRegistry string, d
 			log.Println("Found destination binaries:", len(destinationBinariesList))
 		}
 	} else if destinationRegistryType == "artifactory" {
-		destinationBinariesList, err = listArtifactoryFiles(destinationRegistry, sourceRepo, creds.DestinationUser, creds.DestinationPassword)
+		destinationBinariesList, err = artifactory.ListFiles(destinationRegistry, sourceRepo, creds.DestinationUser, creds.DestinationPassword)
 		if err != nil {
-			err2 := sendSlackNotification(err.Error())
+			err2 := slack.SendMessage(err.Error())
 			if err2 != nil {
 				log.Println(err)
 				panic(err2)
@@ -48,9 +54,9 @@ func Replicate(creds Creds, sourceRegistry string, destinationRegistry string, d
 		}
 		log.Println("Found destination binaries:", len(destinationBinariesList))
 	} else if destinationRegistryType == "oss" {
-		destinationBinariesList, err = listOssFiles(destinationRegistry, creds, endpoint)
+		destinationBinariesList, err = oss.ListFiles(destinationRegistry, creds, endpoint)
 		if err != nil {
-			err2 := sendSlackNotification(err.Error())
+			err2 := slack.SendMessage(err.Error())
 			if err2 != nil {
 				log.Println(err)
 				panic(err2)
@@ -64,7 +70,7 @@ func Replicate(creds Creds, sourceRegistry string, destinationRegistry string, d
 			log.Println("Processing source dir: " + fileName)
 			fileNameSplit := strings.Split(fileName, "/")
 			fileNameWithoutRepo := fileNameSplit[len(fileNameSplit)-1]
-			replicatedRealArtifactsTemp := replicateBinary(creds, sourceRegistry, destinationRegistry, destinationRegistryType, sourceRepo+"/"+fileNameWithoutRepo, force, helmCdnDomain)
+			replicatedRealArtifactsTemp := Replicate(creds, sourceRegistry, destinationRegistry, destinationRegistryType, sourceRepo+"/"+fileNameWithoutRepo, force, helmCdnDomain)
 			for _, v := range replicatedRealArtifactsTemp {
 				replicatedRealArtifacts = append(replicatedRealArtifacts, v)
 			}
@@ -88,9 +94,9 @@ func Replicate(creds Creds, sourceRegistry string, destinationRegistry string, d
 				}
 			}
 			if !fileFound || doSync || force == "true" {
-				tempFileName, err := downloadFromArtifactory(fileURL, helmCdnDomain)
+				tempFileName, err := artifactory.Download(fileURL, helmCdnDomain)
 				if err != nil {
-					log.Println("downloadFromArtifactory failed:")
+					log.Println("artifactory.Download failed:")
 					log.Println(err)
 					failedArtifactoryDownload = append(failedArtifactoryDownload, fileURL)
 					continue
@@ -101,21 +107,21 @@ func Replicate(creds Creds, sourceRegistry string, destinationRegistry string, d
 				destinationFileName = destinationFileName[strings.IndexByte(destinationFileName, '/'):]
 				log.Println("Dest: " + destinationFileName)
 				if destinationRegistryType == "s3" {
-					err := uploadToS3(destinationRegistry, destinationFileName, tempFileName)
+					err := s3.Upload(destinationRegistry, destinationFileName, tempFileName)
 					if err != nil {
-						log.Println("uploadToS3 failed:")
+						log.Println("s3.Upload failed:")
 						log.Println(err)
 						failedS3Upload = append(failedS3Upload, destinationFileName)
 						continue
 					}
 				} else if destinationRegistryType == "artifactory" {
-					err := uploadToArtifactory(destinationRegistry, sourceRepo, fileName, creds.DestinationUser, creds.DestinationPassword, tempFileName)
+					err := artifactory.Upload(destinationRegistry, sourceRepo, fileName, creds.DestinationUser, creds.DestinationPassword, tempFileName)
 					if err != nil {
 						panic(err)
 					}
 				} else if destinationRegistryType == "oss" {
 					destinationFileName = strings.TrimPrefix(destinationFileName, "/")
-					err := uploadToOss(destinationRegistry, destinationFileName, creds, tempFileName, endpoint)
+					err := oss.Upload(destinationRegistry, destinationFileName, creds, tempFileName, endpoint)
 					if err != nil {
 						panic(err)
 					}

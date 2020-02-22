@@ -6,9 +6,9 @@ import (
 	"github.com/loqutus/artifactory-replication/pkg/credentials"
 )
 
-var checkFailed bool
-var checkFailedList []string
-var missingRepos, missingRepoTags []string
+var CheckFailed bool
+var CheckFailedList []string
+var MissingRepos, missingRepoTags []string
 var removedTags, skippedTags uint64
 
 func CheckRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds credentials.Creds) error {
@@ -39,21 +39,21 @@ func CheckRepos(sourceRegistry string, destinationRegistry string, destinationRe
 		}
 		if !destinationRepoFound {
 			log.Println("Repo " + sourceRepo + " NOT found")
-			checkFailed = true
-			missingRepos = append(missingRepos, sourceRepo)
+			CheckFailed = true
+			MissingRepos = append(missingRepos, sourceRepo)
 		}
-		if !checkFailed {
+		if !CheckFailed {
 			sourceRepoTags, err := listTags(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)
 			if err != nil {
 				log.Println("Failed to get tags for repo: " + sourceRepo)
-				missingRepos = append(missingRepos, sourceRepo)
-				checkFailed = true
+				MissingRepos = append(missingRepos, sourceRepo)
+				CheckFailed = true
 			}
 			destinationRepoTags, err := listTags(destinationRegistry, sourceRepo, creds.DestinationUser, creds.DestinationPassword)
 			if err != nil {
 				log.Println("Failed to get tags for repo: " + sourceRepo)
-				missingRepos = append(missingRepos, sourceRepo)
-				checkFailed = true
+				MissingRepos = append(missingRepos, sourceRepo)
+				CheckFailed = true
 			}
 			for _, sourceRepoTag := range sourceRepoTags {
 				tagFound := false
@@ -66,8 +66,8 @@ func CheckRepos(sourceRegistry string, destinationRegistry string, destinationRe
 				}
 				if !tagFound {
 					log.Println("Tag not found: " + sourceRepoTag)
-					missingRepoTags = append(missingRepoTags, sourceRepo+":"+sourceRepoTag)
-					checkFailed = true
+					MissingRepoTags = append(missingRepoTags, sourceRepo+":"+sourceRepoTag)
+					CheckFailed = true
 				}
 			}
 		}

@@ -5,7 +5,7 @@ import (
 	"github.com/loqutus/artifactory-replication/pkg/credentials"
 )
 
-func listOssFiles(sourceRepo string, creds credentials.Creds, endpoint string) (map[string]bool, error) {
+func ListFiles(sourceRepo string, creds credentials.Creds, endpoint string) (map[string]bool, error) {
 	output := make(map[string]bool)
 	ossClient, err := oss.New(endpoint, creds.DestinationUser, creds.DestinationPassword)
 	if err != nil {

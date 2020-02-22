@@ -1,4 +1,4 @@
-package binary
+package sha256
 
 import (
 	"crypto/sha256"
@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-func computeFileSHA256(filePath string) (string, error) {
+func ComputeFileSHA256(filePath string) (string, error) {
 	var returnSHA256 string
 	file, err := os.Open(filePath)
 	if err != nil {

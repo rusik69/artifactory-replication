@@ -15,12 +15,12 @@ func Check(sourceRegistry string, destinationRegistry string, creds credentials.
 	if artifactType == "docker" {
 		err := docker.CheckRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds)
 		if err != nil {
-			err := sendSlackNotification(err.Error())
+			err := slack.SendMessage(err.Error())
 			if err != nil {
 				panic(err)
 			}
 		}
-		if checkFailed {
+		if docker.CheckFailed {
 			if len(missingRepos) > 0 {
 				log.Println("Consistency check failed, missing docker repos:")
 				slackMessage += "Consistency check failed, missing docker repos:\n"

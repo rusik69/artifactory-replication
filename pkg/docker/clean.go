@@ -10,7 +10,7 @@ import (
 	"github.com/loqutus/artifactory-replication/pkg/credentials"
 )
 
-func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFilteredRepos []string, artifactFilter string, destinationRegistry string, creds credentials.Creds, destinationRegistryType string) {
+func Clean(reposLimit string, sourceFilteredRepos []string, destinationFilteredRepos []string, artifactFilter string, destinationRegistry string, creds credentials.Creds, destinationRegistryType string) {
 	log.Println("Cleaning repo:", destinationRegistry)
 	sourceProdRegistry := os.Getenv("SOURCE_PROD_REGISTRY")
 	if sourceProdRegistry == "" {
@@ -28,7 +28,7 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 	if err != nil {
 		panic(err)
 	}
-	sourceProdRepos, err := getRepos(sourceProdRegistry, prodSourceRegistryUser, prodSourceRegistryPassword, reposLimit)
+	sourceProdRepos, err := GetRepos(sourceProdRegistry, prodSourceRegistryUser, prodSourceRegistryPassword, reposLimit)
 	if err != nil {
 		panic(err)
 	}
@@ -81,7 +81,7 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 		timeTags := make(map[string]string)
 		var values []string
 		for _, destinationTag := range filteredDestinationTags {
-			tagUploadDate, err := getDockerCreateTime(destinationRegistry, destinationRepo, destinationTag, creds.DestinationUser, creds.DestinationPassword)
+			tagUploadDate, err := GetCreateTime(destinationRegistry, destinationRepo, destinationTag, creds.DestinationUser, creds.DestinationPassword)
 			if err != nil {
 				panic(err)
 			}
@@ -106,6 +106,6 @@ func dockerClean(reposLimit string, sourceFilteredRepos []string, destinationFil
 			}
 		}
 	}
-	log.Println("Removed", removedTags, "tags")
-	log.Println("Skipped", skippedTags, "tags")
+	log.Println("Removed", RemovedTags, "tags")
+	log.Println("Skipped", SkippedTags, "tags")
 }

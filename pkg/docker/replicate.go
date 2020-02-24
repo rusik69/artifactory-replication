@@ -12,7 +12,9 @@ import (
 	"github.com/loqutus/artifactory-replication/pkg/slack"
 )
 
-var failedDockerPullRepos, failedDockerPushRepos, failedDockerCleanRepos []string
+var FailedPullRepos []string
+var FailedPushRepos []string
+var FailedCleanRepos []string
 
 // ImageToReplicate source/desination image parameters
 type ImageToReplicate struct {
@@ -29,7 +31,7 @@ func doReplicateDocker(image ImageToReplicate, creds credentials.Creds, destinat
 	if err != nil {
 		log.Println(err)
 		log.Println("Error pulling image, ignoring...")
-		failedDockerPullRepos = append(failedDockerPullRepos, image.SourceImage+":"+image.SourceTag)
+		FailedPullRepos = append(FailedPullRepos, image.SourceImage+":"+image.SourceTag)
 		return nil
 	}
 	if destinationRegistryType == "aws" && *repoFound == false {
@@ -58,21 +60,21 @@ func doReplicateDocker(image ImageToReplicate, creds credentials.Creds, destinat
 	if err != nil {
 		log.Println(err)
 		log.Println("Error pushing image, ignoring...")
-		failedDockerPushRepos = append(failedDockerPushRepos, image.DestinationImage+":"+image.DestinationTag)
+		FailedPushRepos = append(FailedPushRepos, image.DestinationImage+":"+image.DestinationTag)
 		return nil
 	}
-	err = deleteImage(sourceImage)
+	err = DeleteImage(sourceImage)
 	if err != nil {
 		log.Println(err)
-		log.Println("Error deleting local image, ignoring...")
-		failedDockerCleanRepos = append(failedDockerCleanRepos, image.SourceImage+":"+image.SourceTag)
+		log.Println("Error deleting local image", sourceImage, ", ignoring...")
+		FailedCleanRepos = append(FailedCleanRepos, image.SourceImage+":"+image.SourceTag)
 		return nil
 	}
-	err = deleteImage(destinationImage)
+	err = DeleteImage(destinationImage)
 	if err != nil {
 		log.Println(err)
-		log.Println("error deleting local image, ignoring...")
-		failedDockerCleanRepos = append(failedDockerCleanRepos, image.DestinationImage+":"+image.DestinationTag)
+		log.Println("error deleting local image ", destinationImage, ", ignoring...")
+		FailedCleanRepos = append(FailedCleanRepos, image.DestinationImage+":"+image.DestinationTag)
 		return nil
 	}
 	return nil
@@ -87,7 +89,7 @@ func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegist
 		reposLimit = "1000000"
 	}
 	log.Println("Getting repos from source registry: " + sourceRegistry)
-	sourceRepos, err := getRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword, reposLimit)
+	sourceRepos, err := GetRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword, reposLimit)
 	if err != nil {
 		err2 := slack.SendMessage(err.Error())
 		if err2 != nil {
@@ -98,7 +100,7 @@ func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegist
 	}
 	log.Println("Found source repos: ", len(sourceRepos))
 	log.Println("Getting repos from destination from destination registry: " + destinationRegistry)
-	destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword, reposLimit)
+	destinationRepos, err := GetRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword, reposLimit)
 	if err != nil {
 		err2 := slack.SendMessage(err.Error())
 		if err2 != nil {
@@ -134,7 +136,7 @@ func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegist
 	log.Println("Found filtered destination repos: ", len(destinationFilteredRepos))
 	dockerCleanup := os.Getenv("DOCKER_CLEAN")
 	if dockerCleanup == "true" {
-		dockerClean(reposLimit, sourceFilteredRepos, destinationFilteredRepos, artifactFilter, destinationRegistry, creds, destinationRegistryType)
+		Clean(reposLimit, sourceFilteredRepos, destinationFilteredRepos, artifactFilter, destinationRegistry, creds, destinationRegistryType)
 		return
 	}
 	for _, sourceRepo := range sourceFilteredRepos {

@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func getDockerCreateTime(dockerRegistry string, image string, tag string, user string, pass string) (string, error) {
+func GetCreateTime(dockerRegistry string, image string, tag string, user string, pass string) (string, error) {
 	httpClient := &http.Client{}
 	req, err := http.NewRequest("GET", "https://"+dockerRegistry+"/v2/"+image+"/manifests/"+tag, nil)
 	if err != nil {

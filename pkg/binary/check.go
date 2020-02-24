@@ -13,7 +13,7 @@ var destinationBinariesList map[string]bool
 var CheckFailed bool
 var CheckFailedList []string
 
-func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds credentials.Creds, dir string) error {
+func CheckRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds credentials.Creds, dir string) error {
 	log.Println("Getting source repos from: " + sourceRegistry)
 	sourceFilesWithDirs, err := artifactory.ListFiles(sourceRegistry, dir, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
@@ -32,7 +32,7 @@ func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destina
 			log.Println("Processing source dir: " + sourceFile)
 			fileNameSplit := strings.Split(sourceFile, "/")
 			fileNameWithoutRepo := fileNameSplit[len(fileNameSplit)-1]
-			checkBinaryRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds, dir+"/"+fileNameWithoutRepo)
+			CheckRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds, dir+"/"+fileNameWithoutRepo)
 		} else {
 			var found bool
 			for destinationBinary := range destinationBinariesList {
@@ -47,7 +47,7 @@ func checkBinaryRepos(sourceRegistry string, destinationRegistry string, destina
 						CheckFailedList = append(CheckFailedList, sourceFile)
 						continue
 					}
-					destinationSHA256, err := artifactory.GetArtifactoryFileSHA256(destinationRegistry, destinationBinary)
+					destinationSHA256, err := s3.GetSHA256(destinationRegistry, destinationBinary)
 					if err != nil {
 						log.Println("Error getting destination file sha256:", destinationBinary)
 						log.Println(err)

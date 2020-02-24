@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-func uploadToArtifactory(destinationRegistry string, sourceRepo string, destinationFileName string, destinationUser string, destinationPassword string, tempFileName string) error {
+func Upload(destinationRegistry string, sourceRepo string, destinationFileName string, destinationUser string, destinationPassword string, tempFileName string) error {
 	url := "https://" + destinationRegistry + "/artifactory/" + sourceRepo + destinationFileName
 	log.Println("Uploading: " + url)
 	f, err := os.Open(tempFileName)

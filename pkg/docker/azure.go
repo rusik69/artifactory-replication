@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-func getAzureDockerTagManifestDigest(registry string, image string, tag string, user string, pass string) (string, error) {
+func GetAzureDockerTagManifestDigest(registry string, image string, tag string, user string, pass string) (string, error) {
 	log.Println("Getting tag manifest digest:", image+":"+tag)
 	url := "https://" + registry + "/acr/v1/" + image + "/_manifests"
 	client := &http.Client{}

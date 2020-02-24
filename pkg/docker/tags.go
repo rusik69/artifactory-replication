@@ -40,7 +40,7 @@ func listTags(dockerRegistry string, image string, user string, pass string) ([]
 
 func dockerRemoveTag(registry string, image string, tag string, destinationRegistryType string, user string, pass string) error {
 	if destinationRegistryType == "azure" {
-		digest, err := getAzureDockerTagManifestDigest(registry, image, tag, user, pass)
+		digest, err := GetAzureDockerTagManifestDigest(registry, image, tag, user, pass)
 		if err != nil {
 			return err
 		}
@@ -65,7 +65,7 @@ func dockerRemoveTag(registry string, image string, tag string, destinationRegis
 			log.Println("Error removing tag", image+":"+tag)
 			log.Println(string([]byte(body)))
 			log.Println("Ignoring...")
-			skippedTags++
+			SkippedTags++
 			return nil
 		}
 		if digest != "" {
@@ -90,12 +90,12 @@ func dockerRemoveTag(registry string, image string, tag string, destinationRegis
 				log.Println("Error removing tag", image+":"+tag)
 				log.Println(string([]byte(bodyTag)))
 				log.Println("Ignoring...")
-				skippedTags++
+				SkippedTags++
 				return nil
 			}
 		} else {
 			log.Println("Tag", image+":"+tag, "have empty digest, skipping...")
-			skippedTags++
+			SkippedTags++
 			return nil
 		}
 	} else {
@@ -103,6 +103,6 @@ func dockerRemoveTag(registry string, image string, tag string, destinationRegis
 		return errors.New("unknown destination registry type")
 	}
 	log.Println("Removed tag:", registry+"/"+image+":"+tag)
-	removedTags++
+	RemovedTags++
 	return nil
 }

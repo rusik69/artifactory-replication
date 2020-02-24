@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-func getRepos(dockerRegistry string, user string, pass string, reposLimit string) ([]string, error) {
+func GetRepos(dockerRegistry string, user string, pass string, reposLimit string) ([]string, error) {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", "https://"+dockerRegistry+"/v2/_catalog?n="+reposLimit, nil)
 	if err != nil {

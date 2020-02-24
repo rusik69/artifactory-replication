@@ -9,7 +9,7 @@ import (
 	"github.com/loqutus/artifactory-replication/pkg/credentials"
 )
 
-func uploadToOss(destinationRegistry string, fileName string, creds credentials.Creds, tempFileName string, endpoint string) error {
+func Upload(destinationRegistry string, fileName string, creds credentials.Creds, tempFileName string, endpoint string) error {
 	log.Println("Uploading " + fileName + " to " + destinationRegistry)
 	ossClient, err := oss.New(endpoint, creds.DestinationUser, creds.DestinationPassword)
 	if err != nil {

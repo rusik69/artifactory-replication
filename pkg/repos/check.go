@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/loqutus/artifactory-replication/pkg/binary"
 	"github.com/loqutus/artifactory-replication/pkg/credentials"
 	"github.com/loqutus/artifactory-replication/pkg/docker"
 	"github.com/loqutus/artifactory-replication/pkg/slack"
@@ -21,18 +22,18 @@ func Check(sourceRegistry string, destinationRegistry string, creds credentials.
 			}
 		}
 		if docker.CheckFailed {
-			if len(missingRepos) > 0 {
+			if len(docker.MissingRepos) > 0 {
 				log.Println("Consistency check failed, missing docker repos:")
 				slackMessage += "Consistency check failed, missing docker repos:\n"
-				for _, missingRepo := range missingRepos {
+				for _, missingRepo := range docker.MissingRepos {
 					log.Println(missingRepo)
 					slackMessage += missingRepo + "\n"
 				}
 			}
-			if len(missingRepoTags) > 0 {
+			if len(docker.MissingRepoTags) > 0 {
 				log.Println("Consistency check failed, missing docker tags:")
 				slackMessage += "Consistency check failed, missing docker tags:\n"
-				for _, missingRepoTag := range missingRepoTags {
+				for _, missingRepoTag := range docker.MissingRepoTags {
 					log.Println(missingRepoTag)
 					slackMessage += missingRepoTag + "\n"
 				}
@@ -47,18 +48,18 @@ func Check(sourceRegistry string, destinationRegistry string, creds credentials.
 			return
 		}
 	} else if artifactType == "binary" {
-		err := checkBinaryRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds, dir)
+		err := binary.CheckRepos(sourceRegistry, destinationRegistry, destinationRegistryType, creds, dir)
 		if err != nil {
 			err := slack.SendMessage(err.Error())
 			if err != nil {
 				panic(err)
 			}
 		}
-		if checkFailed {
+		if binary.CheckFailed {
 			log.Println("Repo check failed, files not found in destination:")
-			log.Println(checkFailedList)
+			log.Println(binary.CheckFailedList)
 			slackMessage += "Repo check failed, files not found in destination:\n"
-			for _, file := range checkFailedList {
+			for _, file := range binary.CheckFailedList {
 				slackMessage += file + "\n"
 			}
 			err := slack.SendMessage(slackMessage)

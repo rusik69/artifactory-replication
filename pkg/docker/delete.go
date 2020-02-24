@@ -8,7 +8,7 @@ import (
 	"github.com/docker/docker/client"
 )
 
-func deleteImage(imageName string) error {
+func DeleteImage(imageName string) error {
 	log.Println("Deleting local image:" + imageName)
 	ctx := context.Background()
 	cli, err := client.NewClientWithOpts(client.FromEnv)

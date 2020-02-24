@@ -8,8 +8,8 @@ import (
 
 var CheckFailed bool
 var CheckFailedList []string
-var MissingRepos, missingRepoTags []string
-var removedTags, skippedTags uint64
+var MissingRepos, MissingRepoTags []string
+var RemovedTags, SkippedTags uint64
 
 func CheckRepos(sourceRegistry string, destinationRegistry string, destinationRegistryType string, creds credentials.Creds) error {
 	var reposLimit string
@@ -19,12 +19,12 @@ func CheckRepos(sourceRegistry string, destinationRegistry string, destinationRe
 		reposLimit = "1000000"
 	}
 	log.Println("Getting source repos from: " + sourceRegistry)
-	sourceRepos, err := getRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword, "1000000")
+	sourceRepos, err := GetRepos(sourceRegistry, creds.SourceUser, creds.SourcePassword, "1000000")
 	if err != nil {
 		return err
 	}
 	log.Println("Getting destination repos from: " + destinationRegistry)
-	destinationRepos, err := getRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword, reposLimit)
+	destinationRepos, err := GetRepos(destinationRegistry, creds.DestinationUser, creds.DestinationPassword, reposLimit)
 	if err != nil {
 		return err
 	}
@@ -40,19 +40,19 @@ func CheckRepos(sourceRegistry string, destinationRegistry string, destinationRe
 		if !destinationRepoFound {
 			log.Println("Repo " + sourceRepo + " NOT found")
 			CheckFailed = true
-			MissingRepos = append(missingRepos, sourceRepo)
+			MissingRepos = append(MissingRepos, sourceRepo)
 		}
 		if !CheckFailed {
 			sourceRepoTags, err := listTags(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)
 			if err != nil {
 				log.Println("Failed to get tags for repo: " + sourceRepo)
-				MissingRepos = append(missingRepos, sourceRepo)
+				MissingRepos = append(MissingRepos, sourceRepo)
 				CheckFailed = true
 			}
 			destinationRepoTags, err := listTags(destinationRegistry, sourceRepo, creds.DestinationUser, creds.DestinationPassword)
 			if err != nil {
 				log.Println("Failed to get tags for repo: " + sourceRepo)
-				MissingRepos = append(missingRepos, sourceRepo)
+				MissingRepos = append(MissingRepos, sourceRepo)
 				CheckFailed = true
 			}
 			for _, sourceRepoTag := range sourceRepoTags {
@@ -66,7 +66,7 @@ func CheckRepos(sourceRegistry string, destinationRegistry string, destinationRe
 				}
 				if !tagFound {
 					log.Println("Tag not found: " + sourceRepoTag)
-					MissingRepoTags = append(missingRepoTags, sourceRepo+":"+sourceRepoTag)
+					MissingRepoTags = append(MissingRepoTags, sourceRepo+":"+sourceRepoTag)
 					CheckFailed = true
 				}
 			}

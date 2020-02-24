@@ -17,7 +17,7 @@ func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegist
 	var replicatedRealArtifacts []string
 	sourceBinariesList, err := artifactory.ListFiles(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
-		err2 := slack.sendMessage(err.Error())
+		err2 := slack.SendMessage(err.Error())
 		if err2 != nil {
 			log.Println(err)
 			panic(err2)
@@ -33,7 +33,7 @@ func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegist
 		if len(destinationBinariesList) == 0 {
 			destinationBinariesList, err = s3.ListFiles(destinationRegistry)
 			if err != nil {
-				err2 := slack.sendMessage(err.Error())
+				err2 := slack.SendMessage(err.Error())
 				if err2 != nil {
 					log.Println(err)
 					panic(err2)
@@ -87,7 +87,7 @@ func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegist
 				}
 			}
 			var doSync bool
-			for _, st := range alwaysSyncList {
+			for _, st := range AlwaysSyncList {
 				if fileNameWithoutPath == st {
 					doSync = true
 					break
@@ -98,7 +98,7 @@ func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegist
 				if err != nil {
 					log.Println("artifactory.Download failed:")
 					log.Println(err)
-					failedArtifactoryDownload = append(failedArtifactoryDownload, fileURL)
+					FailedArtifactoryDownload = append(FailedArtifactoryDownload, fileURL)
 					continue
 				}
 				repoWithoutPathSplit := strings.Split(sourceRepo, "/")
@@ -111,7 +111,7 @@ func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegist
 					if err != nil {
 						log.Println("s3.Upload failed:")
 						log.Println(err)
-						failedS3Upload = append(failedS3Upload, destinationFileName)
+						FailedS3Upload = append(FailedS3Upload, destinationFileName)
 						continue
 					}
 				} else if destinationRegistryType == "artifactory" {

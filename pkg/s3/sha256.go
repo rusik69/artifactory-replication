@@ -8,7 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
-func getS3FileSHA256(S3Bucket string, filename string) (string, error) {
+func GetSHA256(S3Bucket string, filename string) (string, error) {
 	sess, _ := session.NewSession(&aws.Config{})
 	svc := s3.New(sess)
 	input := &s3.HeadObjectInput{

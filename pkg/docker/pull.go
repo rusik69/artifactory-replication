@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
@@ -36,11 +37,27 @@ func pullImage(image ImageToReplicate, creds credentials.Creds) error {
 			return err
 		}
 		authStr := base64.URLEncoding.EncodeToString(encodedJSON)
-		out, err := cli.ImagePull(ctx, sourceImage, types.ImagePullOptions{RegistryAuth: authStr})
-		if err != nil {
+		var failed bool
+		backOffTime := backOffStart
+		var out io.ReadCloser
+		for i := 1; i <= backOffSteps; i++ {
+			out, err = cli.ImagePull(ctx, sourceImage, types.ImagePullOptions{RegistryAuth: authStr})
+			defer out.Close()
+			if err != nil {
+				failed = true
+				log.Print("error pulling image", sourceImage, "retry", string(i))
+				if i != backOffSteps {
+					time.Sleep(time.Duration(backOffTime) * time.Millisecond)
+				}
+				backOffTime *= i
+			} else {
+				failed = false
+				break
+			}
+		}
+		if failed == true {
 			return err
 		}
-		defer out.Close()
 		buf := new(bytes.Buffer)
 		buf.ReadFrom(out)
 		newStr := buf.String()
@@ -49,8 +66,24 @@ func pullImage(image ImageToReplicate, creds credentials.Creds) error {
 		}
 		io.Copy(ioutil.Discard, out)
 	} else {
-		out, err := cli.ImagePull(ctx, sourceImage, types.ImagePullOptions{})
-		if err != nil {
+		var failed bool
+		backOffTime := backOffStart
+		var out io.ReadCloser
+		for i := 1; i <= backOffSteps; i++ {
+			out, err = cli.ImagePull(ctx, sourceImage, types.ImagePullOptions{})
+			if err != nil {
+				failed = true
+				log.Print("error pulling image", sourceImage, "retry", string(i))
+				if i != backOffSteps {
+					time.Sleep(time.Duration(backOffTime) * time.Millisecond)
+				}
+				backOffTime *= i
+			} else {
+				failed = false
+				break
+			}
+		}
+		if failed == true {
 			return err
 		}
 		defer out.Close()

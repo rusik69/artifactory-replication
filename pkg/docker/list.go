@@ -4,22 +4,41 @@ import (
 	"encoding/json"
 	"errors"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 )
 
 func GetRepos(dockerRegistry string, user string, pass string, reposLimit string) ([]string, error) {
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", "https://"+dockerRegistry+"/v2/_catalog?n="+reposLimit, nil)
+	url := "https://" + dockerRegistry + "/v2/_catalog?n=" + reposLimit
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.SetBasicAuth(user, pass)
-	resp, err := client.Do(req)
-	if err != nil {
+	var resp *http.Response
+	var failed bool
+	backOffTime := backOffStart
+	for i := 1; i <= backOffSteps; i++ {
+		resp, err := client.Do(req)
+		defer resp.Body.Close()
+		if err != nil {
+			failed = true
+			log.Print("error HTTP GET", url, "retry", string(i))
+			if i != backOffSteps {
+				time.Sleep(time.Duration(backOffTime) * time.Millisecond)
+			}
+			backOffTime *= i
+		} else {
+			failed = false
+			break
+		}
+	}
+	if failed == true {
 		return nil, err
 	}
-	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err

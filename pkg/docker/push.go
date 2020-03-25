@@ -6,8 +6,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
@@ -39,12 +41,27 @@ func pushImage(image ImageToReplicate, creds credentials.Creds) error {
 			return err
 		}
 		authStr := base64.URLEncoding.EncodeToString(encodedJSON)
-		out, err := cli.ImagePush(ctx, destinationImage, types.ImagePushOptions{RegistryAuth: authStr})
-		if err != nil {
-			log.Println(out)
+		var failed bool
+		backOffTime := backOffStart
+		var out io.ReadCloser
+		for i := 1; i <= backOffSteps; i++ {
+			out, err := cli.ImagePush(ctx, destinationImage, types.ImagePushOptions{RegistryAuth: authStr})
+			defer out.Close()
+			if err != nil {
+				failed = true
+				log.Print("error pushing image", sourceImage, "retry", string(i))
+				if i != backOffSteps {
+					time.Sleep(time.Duration(backOffTime) * time.Millisecond)
+				}
+				backOffTime *= i
+			} else {
+				failed = false
+				break
+			}
+		}
+		if failed == true {
 			return err
 		}
-		defer out.Close()
 		buf := new(bytes.Buffer)
 		buf.ReadFrom(out)
 		newStr := buf.String()
@@ -52,12 +69,27 @@ func pushImage(image ImageToReplicate, creds credentials.Creds) error {
 			return errors.New(newStr)
 		}
 	} else {
-		out, err := cli.ImagePush(ctx, destinationImage, types.ImagePushOptions{})
-		if err != nil {
-			log.Println(out)
+		var failed bool
+		backOffTime := backOffStart
+		var out io.ReadCloser
+		for i := 1; i <= backOffSteps; i++ {
+			out, err := cli.ImagePush(ctx, destinationImage, types.ImagePushOptions{})
+			defer out.Close()
+			if err != nil {
+				failed = true
+				log.Print("error pushing image", sourceImage, "retry", string(i))
+				if i != backOffSteps {
+					time.Sleep(time.Duration(backOffTime) * time.Millisecond)
+				}
+				backOffTime *= i
+			} else {
+				failed = false
+				break
+			}
+		}
+		if failed == true {
 			return err
 		}
-		defer out.Close()
 		buf := new(bytes.Buffer)
 		buf.ReadFrom(out)
 		newStr := buf.String()

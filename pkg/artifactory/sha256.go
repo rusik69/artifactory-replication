@@ -3,7 +3,9 @@ package artifactory
 import (
 	"encoding/json"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"time"
 )
 
 func GetArtifactoryFileSHA256(host string, fileName string, user string, pass string) (string, error) {
@@ -14,11 +16,27 @@ func GetArtifactoryFileSHA256(host string, fileName string, user string, pass st
 		return "", err
 	}
 	req.SetBasicAuth(user, pass)
-	resp, err := client.Do(req)
-	if err != nil {
+	var resp *http.Response
+	var failed bool
+	backOffTime := backOffStart
+	for i := 1; i <= backOffSteps; i++ {
+		resp, err := client.Do(req)
+		defer resp.Body.Close()
+		if err != nil {
+			failed = true
+			log.Print("error HTTP GET", url, "retry", string(i))
+			if i != backOffSteps {
+				time.Sleep(time.Duration(backOffTime) * time.Millisecond)
+			}
+			backOffTime *= i
+		} else {
+			failed = false
+			break
+		}
+	}
+	if failed == true {
 		return "", err
 	}
-	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return "", err

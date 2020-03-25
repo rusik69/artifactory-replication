@@ -8,15 +8,34 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"time"
 )
 
 func Download(fileURL string, helmCdnDomain string) (string, error) {
 	log.Println("Downloading " + fileURL)
-	resp, err := http.Get(fileURL)
-	if err != nil {
+	var resp *http.Response
+	var failed bool
+	var err error
+	backOffTime := backOffStart
+	for i := 1; i <= backOffSteps; i++ {
+		resp, err = http.Get(fileURL)
+		defer resp.Body.Close()
+		if err != nil {
+			failed = true
+			log.Print("error HTTP GET", fileURL, "retry", string(i))
+			if i != backOffSteps {
+				time.Sleep(time.Duration(backOffTime) * time.Millisecond)
+			}
+			backOffTime *= i
+		} else {
+			failed = false
+			break
+		}
+	}
+	if failed == true {
 		return "", err
 	}
-	defer resp.Body.Close()
+
 	tempFile, err := ioutil.TempFile("", "artifactory-download")
 	if err != nil {
 		return "", err

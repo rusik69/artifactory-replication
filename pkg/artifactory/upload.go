@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 )
 
 func Upload(destinationRegistry string, sourceRepo string, destinationFileName string, destinationUser string, destinationPassword string, tempFileName string) error {
@@ -19,6 +20,24 @@ func Upload(destinationRegistry string, sourceRepo string, destinationFileName s
 		return err
 	}
 	req.SetBasicAuth(destinationUser, destinationPassword)
-	_, err = client.Do(req)
+	var failed bool
+	backOffTime := backOffStart
+	for i := 1; i <= backOffSteps; i++ {
+		_, err = client.Do(req)
+		if err != nil {
+			failed = true
+			log.Print("error HTTP POST", url, "retry", string(i))
+			if i != backOffSteps {
+				time.Sleep(time.Duration(backOffTime) * time.Millisecond)
+			}
+			backOffTime *= i
+		} else {
+			failed = false
+			break
+		}
+	}
+	if failed == true {
+		return err
+	}
 	return err
 }

@@ -7,20 +7,38 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 )
 
 func listTags(dockerRegistry string, image string, user string, pass string) ([]string, error) {
 	httpClient := &http.Client{}
-	req, err := http.NewRequest("GET", "https://"+dockerRegistry+"/v2/"+image+"/tags/list?n=10000000", nil)
+	url := "https://" + dockerRegistry + "/v2/" + image + "/tags/list?n=10000000"
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.SetBasicAuth(user, pass)
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		panic(err)
+	var resp *http.Response
+	var failed bool
+	backOffTime := backOffStart
+	for i := 1; i <= backOffSteps; i++ {
+		resp, err := httpClient.Do(req)
+		defer resp.Body.Close()
+		if err != nil {
+			failed = true
+			log.Print("error HTTP GET", url, "retry", string(i))
+			if i != backOffSteps {
+				time.Sleep(time.Duration(backOffTime) * time.Millisecond)
+			}
+			backOffTime *= i
+		} else {
+			failed = false
+			break
+		}
 	}
-	defer resp.Body.Close()
+	if failed == true {
+		return nil, err
+	}
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -52,11 +70,27 @@ func dockerRemoveTag(registry string, image string, tag string, destinationRegis
 			return err
 		}
 		req.SetBasicAuth(user, pass)
-		resp, err := client.Do(req)
-		if err != nil {
+		var resp *http.Response
+		var failed bool
+		backOffTime := backOffStart
+		for i := 1; i <= backOffSteps; i++ {
+			resp, err = client.Do(req)
+			defer resp.Body.Close()
+			if err != nil {
+				failed = true
+				log.Print("error HTTP GET", url, "retry", string(i))
+				if i != backOffSteps {
+					time.Sleep(time.Duration(backOffTime) * time.Millisecond)
+				}
+				backOffTime *= i
+			} else {
+				failed = false
+				break
+			}
+		}
+		if failed == true {
 			return err
 		}
-		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			return err
@@ -77,11 +111,27 @@ func dockerRemoveTag(registry string, image string, tag string, destinationRegis
 				return err
 			}
 			reqTag.SetBasicAuth(user, pass)
-			respTag, err := clientTag.Do(reqTag)
-			if err != nil {
+			var respTag *http.Response
+			var failed bool
+			backOffTime := backOffStart
+			for i := 1; i <= backOffSteps; i++ {
+				respTag, err = clientTag.Do(reqTag)
+				defer respTag.Body.Close()
+				if err != nil {
+					failed = true
+					log.Print("error HTTP DELETE", url, "retry", string(i))
+					if i != backOffSteps {
+						time.Sleep(time.Duration(backOffTime) * time.Millisecond)
+					}
+					backOffTime *= i
+				} else {
+					failed = false
+					break
+				}
+			}
+			if failed == true {
 				return err
 			}
-			defer respTag.Body.Close()
 			bodyTag, err := ioutil.ReadAll(respTag.Body)
 			if err != nil {
 				return err

@@ -2,23 +2,42 @@ package docker
 
 import (
 	"io/ioutil"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 )
 
 func GetCreateTime(dockerRegistry string, image string, tag string, user string, pass string) (string, error) {
 	httpClient := &http.Client{}
-	req, err := http.NewRequest("GET", "https://"+dockerRegistry+"/v2/"+image+"/manifests/"+tag, nil)
+	url := "https://" + dockerRegistry + "/v2/" + image + "/manifests/" + tag
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", err
 	}
 	req.SetBasicAuth(user, pass)
-	resp, err := httpClient.Do(req)
-	if err != nil {
+	var resp *http.Response
+	var failed bool
+	backOffTime := backOffStart
+	for i := 1; i <= backOffSteps; i++ {
+		resp, err = httpClient.Do(req)
+		defer resp.Body.Close()
+		if err != nil {
+			failed = true
+			log.Print("error HTTP GET", url, "retry", string(i))
+			if i != backOffSteps {
+				time.Sleep(time.Duration(backOffTime) * time.Millisecond)
+			}
+			backOffTime *= i
+		} else {
+			failed = false
+			break
+		}
+	}
+	if failed == true {
 		return "", err
 	}
-	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return "", err

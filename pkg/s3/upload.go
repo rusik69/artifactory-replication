@@ -3,6 +3,7 @@ package s3
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -28,12 +29,31 @@ func Upload(destinationRegistry string, destinationFileName string, tempFileName
 		return err
 	}
 	log.Println("Uploading "+destinationFileName+" to "+destinationRegistry, "SHA256:", fileSHA256)
-	_, err = uploader.Upload(&s3manager.UploadInput{
-		Bucket: aws.String(destinationRegistry),
-		Key:    aws.String(destinationFileName),
-		Body:   f,
-		Metadata: map[string]*string{
-			"sha256": aws.String(fileSHA256),
-		}})
-	return err
+	backOffTime := backOffStart
+	var failed bool
+	for i := 1; i <= backOffSteps; i++ {
+		_, err = uploader.Upload(&s3manager.UploadInput{
+			Bucket: aws.String(destinationRegistry),
+			Key:    aws.String(destinationFileName),
+			Body:   f,
+			Metadata: map[string]*string{
+				"sha256": aws.String(fileSHA256),
+			}})
+		if err != nil {
+			failed = true
+			log.Print("error s3 upload", destinationFileName, "retry", string(i))
+			if i != backOffSteps {
+				time.Sleep(time.Duration(backOffTime) * time.Millisecond)
+			}
+			backOffTime *= i
+		} else {
+			failed = false
+			break
+		}
+	}
+	if failed == true {
+		return err
+	} else {
+		return nil
+	}
 }

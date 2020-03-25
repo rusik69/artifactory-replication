@@ -81,7 +81,7 @@ func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegist
 			fileFound := false
 			for destinationFileName := range destinationBinariesList {
 				if destinationFileName == fileName {
-					log.Println("Found binary in destination: " + destinationFileName)
+					//log.Println("Found binary in destination: " + destinationFileName)
 					fileFound = true
 					break
 				}

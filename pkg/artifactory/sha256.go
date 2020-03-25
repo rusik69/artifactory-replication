@@ -20,7 +20,7 @@ func GetArtifactoryFileSHA256(host string, fileName string, user string, pass st
 	var failed bool
 	backOffTime := backOffStart
 	for i := 1; i <= backOffSteps; i++ {
-		resp, err := client.Do(req)
+		resp, err = client.Do(req)
 		defer resp.Body.Close()
 		if err != nil {
 			failed = true

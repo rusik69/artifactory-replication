@@ -22,7 +22,7 @@ func listTags(dockerRegistry string, image string, user string, pass string) ([]
 	var failed bool
 	backOffTime := backOffStart
 	for i := 1; i <= backOffSteps; i++ {
-		resp, err := httpClient.Do(req)
+		resp, err = httpClient.Do(req)
 		defer resp.Body.Close()
 		if err != nil {
 			failed = true

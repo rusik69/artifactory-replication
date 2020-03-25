@@ -23,7 +23,7 @@ func GetAzureDockerTagManifestDigest(registry string, image string, tag string, 
 	var failed bool
 	backOffTime := backOffStart
 	for i := 1; i <= backOffSteps; i++ {
-		resp, err := client.Do(req)
+		resp, err = client.Do(req)
 		defer resp.Body.Close()
 		if err != nil {
 			failed = true

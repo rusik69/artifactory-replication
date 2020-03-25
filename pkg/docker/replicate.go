@@ -166,7 +166,7 @@ func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegist
 			}
 			if sourceRepo == destinationRepo {
 				repoFound = true
-				log.Println("Found repo: " + sourceRepo)
+				//log.Println("Found repo: " + sourceRepo)
 				break
 			}
 		}
@@ -209,7 +209,7 @@ func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegist
 				for _, destinationTag := range destinationTags {
 					if sourceTag == destinationTag {
 						destinationTagFound = true
-						log.Println("Found repo tag: " + sourceRepo + ":" + sourceTag)
+						//log.Println("Found repo tag: " + sourceRepo + ":" + sourceTag)
 						break
 					}
 				}

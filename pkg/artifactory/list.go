@@ -21,7 +21,7 @@ func ListFiles(host string, dir string, user string, pass string) (map[string]bo
 	var failed bool
 	backOffTime := backOffStart
 	for i := 1; i <= backOffSteps; i++ {
-		resp, err := client.Do(req)
+		resp, err = client.Do(req)
 		defer resp.Body.Close()
 		if err != nil {
 			failed = true

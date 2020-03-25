@@ -22,7 +22,7 @@ func GetRepos(dockerRegistry string, user string, pass string, reposLimit string
 	var failed bool
 	backOffTime := backOffStart
 	for i := 1; i <= backOffSteps; i++ {
-		resp, err := client.Do(req)
+		resp, err = client.Do(req)
 		defer resp.Body.Close()
 		if err != nil {
 			failed = true

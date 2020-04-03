@@ -3,9 +3,8 @@ package docker
 import (
 	"log"
 	"os"
-	"sort"
-	"strconv"
 	"strings"
+	"time"
 
 	"github.com/loqutus/artifactory-replication/pkg/credentials"
 )
@@ -19,15 +18,7 @@ func Clean(reposLimit string, sourceFilteredRepos []string, destinationFilteredR
 	log.Println("Getting repos from prod source registry: " + sourceProdRegistry)
 	prodSourceRegistryUser := os.Getenv("SOURCE_PROD_REGISTRY_USER")
 	prodSourceRegistryPassword := os.Getenv("SOURCE_PROD_REGISTRY_PASSWORD")
-	dockerCleanKeepTagsString := os.Getenv("DOCKER_CLEAN_KEEP_TAGS")
-	if dockerCleanKeepTagsString == "" {
-		dockerCleanKeepTagsString = "10"
-	}
-	log.Println("I'm going to remove last", dockerCleanKeepTagsString, "tags")
-	dockerCleanKeepTags, err := strconv.Atoi(dockerCleanKeepTagsString)
-	if err != nil {
-		panic(err)
-	}
+	log.Println("I'm going to remove yesterday and older tags")
 	sourceProdRepos, err := GetRepos(sourceProdRegistry, prodSourceRegistryUser, prodSourceRegistryPassword, reposLimit)
 	if err != nil {
 		panic(err)
@@ -43,6 +34,9 @@ func Clean(reposLimit string, sourceFilteredRepos []string, destinationFilteredR
 		sourceFilteredRepos = sourceProdRepos
 	}
 	log.Println("Found prod source repos: ", len(sourceProdRepos))
+	dt := time.Now()
+	dateNow := dt.Format("2006-01-02")
+	log.Println("Date Now:", dateNow)
 	for _, destinationRepo := range destinationFilteredRepos {
 		log.Println("Processing destination repo:", destinationRepo)
 		var filteredDestinationTags []string
@@ -79,31 +73,30 @@ func Clean(reposLimit string, sourceFilteredRepos []string, destinationFilteredR
 			filteredDestinationTags = destinationRepoTags
 		}
 		timeTags := make(map[string]string)
-		var values []string
 		for _, destinationTag := range filteredDestinationTags {
-			tagUploadDate, err := GetCreateTime(destinationRegistry, destinationRepo, destinationTag, creds.DestinationUser, creds.DestinationPassword)
+			tagUploadDateTime, err := GetCreateTime(destinationRegistry, destinationRepo, destinationTag, creds.DestinationUser, creds.DestinationPassword)
 			if err != nil {
 				panic(err)
 			}
-			log.Println("Getting tag creation time:", destinationRegistry+"/"+destinationRepo+":"+destinationTag, tagUploadDate)
+			//log.Println("Getting tag creation time:", destinationRegistry+"/"+destinationRepo+":"+destinationTag, tagUploadDate)
+			s := strings.Split(tagUploadDateTime, "T")
+			tagUploadDate := s[0]
 			timeTags[destinationTag] = tagUploadDate
-			values = append(values, tagUploadDate)
 		}
-		sort.Strings(values)
-		if len(values) > dockerCleanKeepTags {
-			log.Println("Removing last", len(values)-dockerCleanKeepTags, "tags from:", destinationRegistry+"/"+destinationRepo)
-			for i := len(values) - 1; i >= dockerCleanKeepTags; i-- {
-				var tagToRemove string
-				for k, v := range timeTags {
-					if values[i] == v {
-						tagToRemove = k
-					}
-				}
-				err := dockerRemoveTag(destinationRegistry, destinationRepo, tagToRemove, destinationRegistryType, creds.DestinationUser, creds.DestinationPassword)
+
+		for k, v := range timeTags {
+			if v != dateNow {
+				log.Println("Removing tag:", k, v)
+				err := dockerRemoveTag(destinationRegistry, destinationRepo, k, destinationRegistryType, creds.DestinationUser, creds.DestinationPassword)
 				if err != nil {
 					panic(err)
 				}
+				RemovedTags++
+			} else {
+				log.Println("Keeping tag:", k, v)
+				SkippedTags++
 			}
+
 		}
 	}
 	log.Println("Removed", RemovedTags, "tags")

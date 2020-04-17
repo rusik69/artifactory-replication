@@ -3,6 +3,7 @@ package binary
 import (
 	"log"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/loqutus/artifactory-replication/pkg/artifactory"
@@ -15,6 +16,7 @@ import (
 func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, sourceRepo string, force string, helmCdnDomain string) []string {
 	log.Println("Replicating repo " + sourceRegistry + "/" + sourceRepo + " to " + destinationRegistry + "/" + sourceRepo)
 	var replicatedRealArtifacts []string
+	syncPattern := os.Getenv("SYNC_PATTERN")
 	sourceBinariesList, err := artifactory.ListFiles(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
 		err2 := slack.SendMessage(err.Error())
@@ -65,6 +67,7 @@ func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegist
 		}
 		log.Println("Found destination binaries:", len(destinationBinariesList))
 	}
+
 	for fileName, fileIsDir := range sourceBinariesList {
 		if fileIsDir {
 			log.Println("Processing source dir: " + fileName)
@@ -87,6 +90,14 @@ func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegist
 				}
 			}
 			var doSync bool
+			if syncPattern != "" {
+				match, _ := regexp.MatchString(syncPattern, fileName)
+				if match {
+					doSync = true
+					log.Println("Filename", fileName, "matched pattern", syncPattern)
+				}
+
+			}
 			for _, st := range AlwaysSyncList {
 				if fileNameWithoutPath == st {
 					doSync = true

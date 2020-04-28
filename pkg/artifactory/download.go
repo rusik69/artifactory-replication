@@ -1,7 +1,6 @@
 package artifactory
 
 import (
-	"errors"
 	"io"
 	"io/ioutil"
 	"log"
@@ -20,9 +19,9 @@ func Download(fileURL string, helmCdnDomain string) (string, error) {
 	for i := 1; i <= backOffSteps; i++ {
 		resp, err = http.Get(fileURL)
 		defer resp.Body.Close()
-		if err != nil {
+		if err != nil || resp.StatusCode != 200 {
 			failed = true
-			log.Print("error HTTP GET", fileURL, "retry", string(i))
+			log.Println("error HTTP GET", resp.Status, fileURL, "retry", string(i))
 			if i != backOffSteps {
 				time.Sleep(time.Duration(backOffTime) * time.Millisecond)
 			}
@@ -35,13 +34,9 @@ func Download(fileURL string, helmCdnDomain string) (string, error) {
 	if failed == true {
 		return "", err
 	}
-
 	tempFile, err := ioutil.TempFile("", "artifactory-download")
 	if err != nil {
 		return "", err
-	}
-	if resp.StatusCode != 200 {
-		return "", errors.New("Response code error: " + string(resp.StatusCode))
 	}
 	_, err = io.Copy(tempFile, resp.Body)
 	if err != nil {

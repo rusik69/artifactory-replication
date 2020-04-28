@@ -2,7 +2,6 @@ package docker
 
 import (
 	"encoding/json"
-	"errors"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -21,6 +20,7 @@ func GetRepos(dockerRegistry string, user string, pass string, reposLimit string
 	var resp *http.Response
 	var failed bool
 	backOffTime := backOffStart
+	var body []byte
 	for i := 1; i <= backOffSteps; i++ {
 		resp, err = client.Do(req)
 		defer resp.Body.Close()
@@ -33,18 +33,17 @@ func GetRepos(dockerRegistry string, user string, pass string, reposLimit string
 			backOffTime *= i
 		} else {
 			failed = false
+			body, err = ioutil.ReadAll(resp.Body)
+			if err != nil || strings.Contains(string([]byte(body)), "errors") {
+				failed = true
+				log.Print("error HTTP GET", url, "retry", string(i))
+				backOffTime *= i
+			}
 			break
 		}
 	}
 	if failed == true {
 		return nil, err
-	}
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	if strings.Contains(string([]byte(body)), "errors") {
-		return nil, errors.New(string([]byte(body)))
 	}
 	type res struct {
 		Repositories []string

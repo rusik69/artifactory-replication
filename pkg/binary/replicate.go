@@ -13,11 +13,10 @@ import (
 	"github.com/loqutus/artifactory-replication/pkg/slack"
 )
 
-func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, sourceRepo string, force string, helmCdnDomain string) []string {
+func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, sourceRepo string, force string, helmCdnDomain string, syncPattern string) ([]string, []string) {
 	log.Println("Replicating repo " + sourceRegistry + "/" + sourceRepo + " to " + destinationRegistry + "/" + sourceRepo)
-	var replicatedRealArtifacts []string
-	syncPattern := os.Getenv("SYNC_PATTERN")
 	sourceBinariesList, err := artifactory.ListFiles(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)
+	var replicatedRealArtifacts, replicatedForcedArtifacts []string
 	if err != nil {
 		err2 := slack.SendMessage(err.Error())
 		if err2 != nil {
@@ -73,9 +72,12 @@ func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegist
 			log.Println("Processing source dir: " + fileName)
 			fileNameSplit := strings.Split(fileName, "/")
 			fileNameWithoutRepo := fileNameSplit[len(fileNameSplit)-1]
-			replicatedRealArtifactsTemp := Replicate(creds, sourceRegistry, destinationRegistry, destinationRegistryType, sourceRepo+"/"+fileNameWithoutRepo, force, helmCdnDomain)
+			replicatedRealArtifactsTemp, replicatedForcedArtifactsTemp := Replicate(creds, sourceRegistry, destinationRegistry, destinationRegistryType, sourceRepo+"/"+fileNameWithoutRepo, force, helmCdnDomain, syncPattern)
 			for _, v := range replicatedRealArtifactsTemp {
 				replicatedRealArtifacts = append(replicatedRealArtifacts, v)
+			}
+			for _, v := range replicatedForcedArtifactsTemp {
+				replicatedForcedArtifacts = append(replicatedForcedArtifacts, v)
 			}
 		} else {
 			fileNameSplit := strings.Split(fileName, "/")
@@ -137,15 +139,16 @@ func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegist
 						panic(err)
 					}
 				}
+				fileNameSplit := strings.Split(fileName, "/")
+				fileNameWithoutRepo := fileNameSplit[len(fileNameSplit)-1]
 				if !doSync && !(force == "true") {
-					fileNameSplit := strings.Split(fileName, "/")
-					fileNameWithoutRepo := fileNameSplit[len(fileNameSplit)-1]
 					replicatedRealArtifacts = append(replicatedRealArtifacts, sourceRepo+"/"+fileNameWithoutRepo)
+				} else {
+					replicatedForcedArtifacts = append(replicatedForcedArtifacts, sourceRepo+"/"+fileNameWithoutRepo)
 				}
 				os.Remove(tempFileName)
 			}
 		}
 	}
-	log.Printf("%d artifacts copied to %s\n", len(replicatedRealArtifacts), sourceRepo)
-	return replicatedRealArtifacts
+	return replicatedRealArtifacts, replicatedForcedArtifacts
 }

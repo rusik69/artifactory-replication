@@ -35,8 +35,11 @@ func Clean(reposLimit string, sourceFilteredRepos []string, destinationFilteredR
 	}
 	log.Println("Found prod source repos: ", len(sourceProdRepos))
 	dt := time.Now()
+	dtYesterday := time.Now().AddDate(0, 0, -1)
 	dateNow := dt.Format("2006-01-02")
+	dateYesterday := dtYesterday.Format("2006-01-02")
 	log.Println("Date Now:", dateNow)
+	log.Println("Date yesterday:", dateYesterday)
 	for _, destinationRepo := range destinationFilteredRepos {
 		log.Println("Processing destination repo:", destinationRepo)
 		var filteredDestinationTags []string
@@ -85,7 +88,7 @@ func Clean(reposLimit string, sourceFilteredRepos []string, destinationFilteredR
 		}
 
 		for k, v := range timeTags {
-			if v != dateNow {
+			if v != dateNow || v != dateYesterday {
 				log.Println("Removing tag:", k, v)
 				err := dockerRemoveTag(destinationRegistry, destinationRepo, k, destinationRegistryType, creds.DestinationUser, creds.DestinationPassword)
 				if err != nil {

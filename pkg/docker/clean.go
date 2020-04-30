@@ -88,7 +88,7 @@ func Clean(reposLimit string, sourceFilteredRepos []string, destinationFilteredR
 		}
 
 		for k, v := range timeTags {
-			if v != dateNow || v != dateYesterday {
+			if v != dateNow && v != dateYesterday {
 				log.Println("Removing tag:", k, v)
 				err := dockerRemoveTag(destinationRegistry, destinationRepo, k, destinationRegistryType, creds.DestinationUser, creds.DestinationPassword)
 				if err != nil {

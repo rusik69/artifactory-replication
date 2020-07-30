@@ -1,4 +1,4 @@
 .idea/*
-replicate
+./replicate
 go.sum
 artifactory-replication

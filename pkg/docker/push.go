@@ -46,7 +46,6 @@ func pushImage(image ImageToReplicate, creds credentials.Creds) error {
 		var out io.ReadCloser
 		for i := 1; i <= backOffSteps; i++ {
 			out, err = cli.ImagePush(ctx, destinationImage, types.ImagePushOptions{RegistryAuth: authStr})
-			defer out.Close()
 			if err != nil {
 				failed = true
 				log.Print("error pushing image", sourceImage, "retry", string(i))
@@ -55,6 +54,7 @@ func pushImage(image ImageToReplicate, creds credentials.Creds) error {
 				}
 				backOffTime *= i
 			} else {
+				defer out.Close()
 				failed = false
 				break
 			}

@@ -24,7 +24,7 @@ func GetAzureDockerTagManifestDigest(registry string, image string, tag string, 
 	backOffTime := backOffStart
 	for i := 1; i <= backOffSteps; i++ {
 		resp, err = client.Do(req)
-		defer resp.Body.Close()
+
 		if err != nil {
 			failed = true
 			log.Print("error HTTP GET", url, "retry", string(i))
@@ -33,6 +33,7 @@ func GetAzureDockerTagManifestDigest(registry string, image string, tag string, 
 			}
 			backOffTime *= i
 		} else {
+			defer resp.Body.Close()
 			failed = false
 			break
 		}
@@ -56,7 +57,6 @@ func GetAzureDockerTagManifestDigest(registry string, image string, tag string, 
 		return "", nil
 	}
 	digestSha := digestRaw[0 : len(digestRaw)-2]
-	//digest := digestSha[7:]
 	digest := digestSha
 	return string(digest), nil
 }

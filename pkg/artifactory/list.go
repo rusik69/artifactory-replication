@@ -31,6 +31,7 @@ func ListFiles(host string, dir string, user string, pass string) (map[string]bo
 			}
 			backOffTime *= i
 		} else {
+			defer resp.Body.Close()
 			failed = false
 			break
 		}

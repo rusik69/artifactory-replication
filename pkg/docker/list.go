@@ -23,7 +23,6 @@ func GetRepos(dockerRegistry string, user string, pass string, reposLimit string
 	var body []byte
 	for i := 1; i <= backOffSteps; i++ {
 		resp, err = client.Do(req)
-		defer resp.Body.Close()
 		if err != nil {
 			failed = true
 			log.Print("error HTTP GET", url, "retry", string(i))
@@ -32,6 +31,7 @@ func GetRepos(dockerRegistry string, user string, pass string, reposLimit string
 			}
 			backOffTime *= i
 		} else {
+			defer resp.Body.Close()
 			failed = false
 			body, err = ioutil.ReadAll(resp.Body)
 			if err != nil || strings.Contains(string([]byte(body)), "errors") {

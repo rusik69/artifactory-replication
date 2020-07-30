@@ -18,7 +18,6 @@ func Download(fileURL string, helmCdnDomain string) (string, error) {
 	backOffTime := backOffStart
 	for i := 1; i <= backOffSteps; i++ {
 		resp, err = http.Get(fileURL)
-		defer resp.Body.Close()
 		if err != nil || resp.StatusCode != 200 {
 			failed = true
 			log.Println("error HTTP GET", resp.Status, fileURL, "retry", string(i))
@@ -27,6 +26,7 @@ func Download(fileURL string, helmCdnDomain string) (string, error) {
 			}
 			backOffTime *= i
 		} else {
+			defer resp.Body.Close()
 			failed = false
 			break
 		}

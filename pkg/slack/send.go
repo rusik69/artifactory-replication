@@ -37,7 +37,6 @@ func SendMessage(msg string) error {
 		backOffTime := backOffStart
 		for i := 1; i <= backOffSteps; i++ {
 			resp, err = client.Do(req)
-			defer resp.Body.Close()
 			if err != nil {
 				failed = true
 				log.Print("error HTTP POST", slackWebhook, "retry", string(i))
@@ -46,6 +45,7 @@ func SendMessage(msg string) error {
 				}
 				backOffTime *= i
 			} else {
+				defer resp.Body.Close()
 				failed = false
 				break
 			}

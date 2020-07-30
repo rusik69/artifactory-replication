@@ -23,7 +23,6 @@ func listTags(dockerRegistry string, image string, user string, pass string) ([]
 	backOffTime := backOffStart
 	for i := 1; i <= backOffSteps; i++ {
 		resp, err = httpClient.Do(req)
-		defer resp.Body.Close()
 		if err != nil {
 			failed = true
 			log.Print("error HTTP GET", url, "retry", string(i))
@@ -32,6 +31,7 @@ func listTags(dockerRegistry string, image string, user string, pass string) ([]
 			}
 			backOffTime *= i
 		} else {
+			defer resp.Body.Close()
 			failed = false
 			break
 		}

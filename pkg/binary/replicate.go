@@ -14,9 +14,9 @@ import (
 )
 
 func Replicate(creds credentials.Creds, sourceRegistry string, destinationRegistry string, destinationRegistryType string, sourceRepo string, force string, helmCdnDomain string, syncPattern string) ([]string, []string) {
+	var replicatedRealArtifacts, replicatedForcedArtifacts []string
 	log.Println("Replicating repo " + sourceRegistry + "/" + sourceRepo + " to " + destinationRegistry + "/" + sourceRepo)
 	sourceBinariesList, err := artifactory.ListFiles(sourceRegistry, sourceRepo, creds.SourceUser, creds.SourcePassword)
-	var replicatedRealArtifacts, replicatedForcedArtifacts []string
 	if err != nil {
 		err2 := slack.SendMessage(err.Error())
 		if err2 != nil {

@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/loqutus/artifactory-replication/pkg/binary"
@@ -106,6 +107,22 @@ func main() {
 		if helmCdnDomain != "" {
 			log.Println("Helm CDN domain: " + helmCdnDomain)
 		}
+		binaryCleanup := os.Getenv("BINARY_CLEAN")
+		if binaryCleanup == "true" {
+			keepDaysString := os.Getenv("BINARY_CLEAN_KEEP_DAYS")
+			keepDays, err := strconv.Atoi(keepDaysString)
+			if err != nil {
+				log.Println("Error getting BINARY_CLEAN_KEEP_DAYS")
+				panic(err)
+			}
+			cleanedArtifacts, err := binary.Clean(destinationRegistry, destinationRegistryType, sourceRegistry, artifactFilter, artifactFilterProd, creds, keepDays)
+			if err != nil {
+				log.Println("Error cleaning binary artifacts from " + destinationRegistry)
+				panic(err)
+			}
+			log.Println("Cleaned " + string(len(cleanedArtifacts)) + "from " + destinationRegistry)
+			os.Exit(0)
+		}
 		log.Println("Replicating dev repo")
 		replicatedRealArtifacts, replicatedForcedArtifacts := binary.Replicate(creds, sourceRegistry, destinationRegistry, destinationRegistryType, artifactFilter, force, helmCdnDomain, syncPattern)
 		log.Printf("%d real artifacts copied to %s\n", len(replicatedRealArtifacts), artifactFilter)
@@ -123,6 +140,7 @@ func main() {
 		if (len(replicatedRealArtifacts) != 0 || len(replicatedRealArtifactsProd) != 0) && artifactFilterProd != "" {
 			err := helm.RegenerateIndexYaml(replicatedRealArtifacts, replicatedRealArtifactsProd, sourceRegistry, destinationRegistry, repoName, repoNameProd, helmCdnDomain)
 			if err != nil {
+				log.Println("error regenerating index.yaml")
 				panic(err)
 			}
 		}

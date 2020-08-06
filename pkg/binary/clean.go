@@ -3,6 +3,7 @@ package binary
 import (
 	"errors"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/loqutus/artifactory-replication/pkg/artifactory"
@@ -14,19 +15,24 @@ func removeStringFromSlice(slice []string, s int) []string {
 	return append(slice[:s], slice[s+1:]...)
 }
 
-func Clean(destinationRegistry string, destinationRegistryType string, sourceRegistry string, artifactFilter string, artifactFilterProd string, creds credentials.Creds, keepDays int) ([]string, error) {
+func Clean(destinationRegistry string, destinationRegistryType string, sourceRegistry string, artifactFilterProd string, creds credentials.Creds, keepDays int) ([]string, error) {
+	log.Println("Cleaning repo " + destinationRegistry + " from files older than " + strconv.Itoa(keepDays) + " days and not in repo " + sourceRegistry + "/" + artifactFilterProd)
 	var filesToRemove []string
 	if destinationRegistryType != "s3" {
 		return nil, errors.New("Unknown destination registry type: " + destinationRegistryType)
 	}
-	destinationFiles, err := s3.ListFiles(destinationRegistry)
+	log.Println("artifactory.ListFiles " + sourceRegistry + "/" + artifactFilterProd)
+	sourceFilesProd, err := artifactory.ListFilesRecursive(sourceRegistry, artifactFilterProd, creds.SourceUser, creds.SourcePassword)
 	if err != nil {
 		return nil, err
 	}
-	sourceFilesProd, err := artifactory.ListFiles(sourceRegistry, artifactFilterProd, creds.SourceUser, creds.SourcePassword)
+	log.Println("got " + string(strconv.Itoa(len(sourceFilesProd))) + " files")
+	log.Println("s3.GetFilesModificationDate: " + destinationRegistry)
+	destinationFiles, err := s3.GetFilesModificationDate(destinationRegistry)
 	if err != nil {
 		return nil, err
 	}
+	log.Println("got " + string(strconv.Itoa(len(destinationFiles))) + " files with modification date from" + destinationRegistry)
 	for sourceFile, _ := range sourceFilesProd {
 		for destinationFile, _ := range destinationFiles {
 			if sourceFile == destinationFile {
@@ -34,22 +40,14 @@ func Clean(destinationRegistry string, destinationRegistryType string, sourceReg
 			}
 		}
 	}
-	var filesList []string
-	for file, _ := range destinationFiles {
-		filesList = append(filesList, file)
-	}
-	files, err := s3.GetFilesModificationDate(destinationRegistry, filesList)
-	if err != nil {
-		return nil, err
-	}
 	timeKeep := time.Now().Add(time.Duration(-keepDays) * time.Hour)
-	for fileName, modificationDate := range files {
+	for fileName, modificationDate := range destinationFiles {
 		if modificationDate.Before(timeKeep) {
 			filesToRemove = append(filesToRemove, fileName)
 		}
 	}
-	log.Println(filesToRemove)
-	removeFailed, err := s3.Delete(destinationRegistry, filesToRemove)
+	log.Println("removing " + strconv.Itoa(len(filesToRemove)) + " files from " + destinationRegistry)
+	/* removeFailed, err := s3.Delete(destinationRegistry, filesToRemove)
 	if err != nil {
 		return nil, err
 	}
@@ -58,6 +56,6 @@ func Clean(destinationRegistry string, destinationRegistryType string, sourceReg
 		for _, file := range removeFailed {
 			log.Println(file)
 		}
-	}
+	} */
 	return filesToRemove, nil
 }

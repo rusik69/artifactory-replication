@@ -9,7 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
-func GetFilesModificationDate(S3Bucket string, files []string) (map[string]*time.Time, error) {
+func GetFilesModificationDate(S3Bucket string) (map[string]*time.Time, error) {
 	sess, _ := session.NewSession(&aws.Config{})
 	svc := s3.New(sess)
 	var objects []s3.Object
@@ -41,11 +41,7 @@ func GetFilesModificationDate(S3Bucket string, files []string) (map[string]*time
 		return nil, err
 	}
 	for _, object := range objects {
-		for _, file := range files {
-			if *object.Key == file {
-				output[file] = object.LastModified
-			}
-		}
+		output[*object.Key] = object.LastModified
 	}
 	return output, nil
 }

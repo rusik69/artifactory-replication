@@ -112,10 +112,10 @@ func main() {
 			keepDaysString := os.Getenv("BINARY_CLEAN_KEEP_DAYS")
 			keepDays, err := strconv.Atoi(keepDaysString)
 			if err != nil {
-				log.Println("Error getting BINARY_CLEAN_KEEP_DAYS")
+				log.Println("Error Atoi BINARY_CLEAN_KEEP_DAYS")
 				panic(err)
 			}
-			cleanedArtifacts, err := binary.Clean(destinationRegistry, destinationRegistryType, sourceRegistry, artifactFilter, artifactFilterProd, creds, keepDays)
+			cleanedArtifacts, err := binary.Clean(destinationRegistry, destinationRegistryType, sourceRegistry, artifactFilterProd, creds, keepDays)
 			if err != nil {
 				log.Println("Error cleaning binary artifacts from " + destinationRegistry)
 				panic(err)

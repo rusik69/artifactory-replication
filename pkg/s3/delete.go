@@ -17,6 +17,7 @@ func Delete(bucket string, files []string) ([]string, error) {
 	}
 	svc := s3.New(sess)
 	for _, file := range files {
+		log.Println("removing: ", file)
 		input := &s3.DeleteObjectInput{
 			Bucket: aws.String(bucket),
 			Key:    aws.String(file),

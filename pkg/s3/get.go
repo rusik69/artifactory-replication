@@ -2,6 +2,7 @@ package s3
 
 import (
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -27,7 +28,7 @@ func GetFilesModificationDate(S3Bucket string) (map[string]*time.Time, error) {
 			})
 		if err != nil {
 			failed = true
-			log.Print("error s3 list objects in bucket", S3Bucket, "retry", string(i))
+			log.Print("error s3 list objects in bucket", S3Bucket, " retry ", strconv.Itoa(i))
 			if i != backOffSteps {
 				time.Sleep(time.Duration(backOffTime) * time.Millisecond)
 			}

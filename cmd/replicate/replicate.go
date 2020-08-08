@@ -120,7 +120,7 @@ func main() {
 				log.Println("Error cleaning binary artifacts from " + destinationRegistry)
 				panic(err)
 			}
-			log.Println("Cleaned " + string(len(cleanedArtifacts)) + "from " + destinationRegistry)
+			log.Println("Cleaned " + strconv.Itoa(len(cleanedArtifacts)) + " from " + destinationRegistry)
 			os.Exit(0)
 		}
 		log.Println("Replicating dev repo")

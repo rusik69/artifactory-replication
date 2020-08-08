@@ -22,10 +22,9 @@ func ListFiles(host string, dir string, user string, pass string) (map[string]bo
 	backOffTime := backOffStart
 	for i := 1; i <= backOffSteps; i++ {
 		resp, err = client.Do(req)
-		defer resp.Body.Close()
 		if err != nil {
 			failed = true
-			log.Print("error HTTP GET", url, "retry", string(i))
+			log.Print("error HTTP GET ", url, "retry", string(i))
 			if i != backOffSteps {
 				time.Sleep(time.Duration(backOffTime) * time.Millisecond)
 			}
@@ -35,6 +34,7 @@ func ListFiles(host string, dir string, user string, pass string) (map[string]bo
 			failed = false
 			break
 		}
+		defer resp.Body.Close()
 	}
 	if failed == true {
 		return nil, err

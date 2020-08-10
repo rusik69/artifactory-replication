@@ -8,6 +8,7 @@ import (
 
 	"github.com/loqutus/artifactory-replication/pkg/artifactory"
 	"github.com/loqutus/artifactory-replication/pkg/credentials"
+	"github.com/loqutus/artifactory-replication/pkg/helm"
 	"github.com/loqutus/artifactory-replication/pkg/s3"
 )
 
@@ -15,7 +16,7 @@ func removeStringFromSlice(slice []string, s int) []string {
 	return append(slice[:s], slice[s+1:]...)
 }
 
-func Clean(destinationRegistry string, destinationRegistryType string, sourceRegistry string, artifactFilterProd string, creds credentials.Creds, keepDays int) ([]string, error) {
+func Clean(destinationRegistry string, destinationRegistryType string, sourceRegistry string, artifactFilterProd string, creds credentials.Creds, keepDays int, helmCdnDomain string) ([]string, error) {
 	log.Println("Cleaning repo " + destinationRegistry + " from files older than " + strconv.Itoa(keepDays) + " days and not in repo " + sourceRegistry + "/" + artifactFilterProd)
 	var filesToRemove []string
 	if destinationRegistryType != "s3" {
@@ -65,12 +66,12 @@ func Clean(destinationRegistry string, destinationRegistryType string, sourceReg
 			log.Println(file)
 		}
 	} */
-	/* if len(filesToRemove) > 0 {
-		err := helm.RegenerateIndexYaml(replicatedRealArtifacts, replicatedRealArtifactsProd, sourceRegistry, destinationRegistry, repoName, repoNameProd, helmCdnDomain)
+	if len(filesToRemove) > 0 {
+		err := helm.RegenerateIndexYaml(filesToRemove, sourceFilesProd, sourceRegistry, destinationRegistry, destinationRegistry, sourceRegistry, helmCdnDomain)
 		if err != nil {
 			log.Println("error regenerating index.yaml")
 			panic(err)
 		}
-	} */
+	}
 	return filesToRemove, nil
 }

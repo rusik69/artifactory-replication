@@ -115,7 +115,7 @@ func main() {
 				log.Println("Error Atoi BINARY_CLEAN_KEEP_DAYS")
 				panic(err)
 			}
-			cleanedArtifacts, err := binary.Clean(destinationRegistry, destinationRegistryType, sourceRegistry, artifactFilterProd, creds, keepDays)
+			cleanedArtifacts, err := binary.Clean(destinationRegistry, destinationRegistryType, sourceRegistry, artifactFilterProd, creds, keepDays, helmCdnDomain)
 			if err != nil {
 				log.Println("Error cleaning binary artifacts from " + destinationRegistry)
 				panic(err)

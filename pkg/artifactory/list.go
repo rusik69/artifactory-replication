@@ -24,7 +24,7 @@ func ListFiles(host string, dir string, user string, pass string) (map[string]bo
 		resp, err = client.Do(req)
 		if err != nil {
 			failed = true
-			log.Print("error HTTP GET ", url, "retry", string(i))
+			log.Print("error HTTP GET ", url, " retry", string(i))
 			if i != backOffSteps {
 				time.Sleep(time.Duration(backOffTime) * time.Millisecond)
 			}

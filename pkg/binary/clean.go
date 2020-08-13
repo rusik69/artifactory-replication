@@ -52,9 +52,6 @@ func Clean(destinationRegistry string, destinationRegistryType string, sourceReg
 			filesToRemove = append(filesToRemove, fileName)
 		}
 	}
-	/* for _, file := range filesToRemove {
-		log.Println(file)
-	} */
 	log.Println("removing " + strconv.Itoa(len(filesToRemove)) + " files from " + destinationRegistry)
 	/* removeFailed, err := s3.Delete(destinationRegistry, filesToRemove)
 	if err != nil {
@@ -67,7 +64,7 @@ func Clean(destinationRegistry string, destinationRegistryType string, sourceReg
 		}
 	} */
 	if len(filesToRemove) > 0 {
-		err := helm.RegenerateIndexYaml(filesToRemove, sourceFilesProd, sourceRegistry, destinationRegistry, destinationRegistry, sourceRegistry, helmCdnDomain)
+		err := helm.Reindex(filesToRemove, destinationRegistry, sourceFilesProd, helmCdnDomain)
 		if err != nil {
 			log.Println("error regenerating index.yaml")
 			panic(err)

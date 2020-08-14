@@ -115,6 +115,10 @@ func main() {
 				log.Println("Error Atoi BINARY_CLEAN_KEEP_DAYS")
 				panic(err)
 			}
+			if helmCdnDomain == "" {
+				log.Println("Empty HELM_CDN_DOMAIN")
+				panic(nil)
+			}
 			cleanedArtifacts, err := binary.Clean(destinationRegistry, destinationRegistryType, sourceRegistry, artifactFilterProd, creds, keepDays, helmCdnDomain)
 			if err != nil {
 				log.Println("Error cleaning binary artifacts from " + destinationRegistry)

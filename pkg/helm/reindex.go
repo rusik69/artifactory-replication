@@ -29,11 +29,17 @@ func Reindex(filesList []string, registry string, allFiles []string, helmCdnDoma
 		if err != nil {
 			return err
 		}
-		err = indexFile.WriteFile(dir+"index.yaml", 0660)
+		tempFileName := dir + "/index.yaml"
+		err = indexFile.WriteFile(tempFileName, 0660)
 		if err != nil {
 			return err
 		}
-		log.Println("Written index file", dir+"index.yaml")
+		log.Println("Written index file", tempFileName)
+		log.Println("Uploading", prefix+"/index.yaml")
+		err := s3.Upload(registry, prefix+"/index.yaml", tempFileName)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -69,6 +69,9 @@ func Clean(destinationRegistry string, destinationRegistryType string, sourceReg
 			log.Println("error regenerating index.yaml")
 			panic(err)
 		}
+	} else {
+		log.Println("Haven't found anything to remove, exiting...")
+		return nil, nil
 	}
 	return filesToRemove, nil
 }

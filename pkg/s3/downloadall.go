@@ -21,7 +21,7 @@ func DownloadAllFiles(bucket string, objectPath string, allFiles []string) (stri
 
 	for _, file := range allFilesInDir {
 		log.Println("Downloading", file)
-		_, err := Download(bucket, objectPath, tempDir)
+		_, err := Download(bucket, file, tempDir)
 		if err != nil {
 			return "", err
 		}

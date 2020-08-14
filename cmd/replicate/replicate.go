@@ -119,7 +119,12 @@ func main() {
 				log.Println("Empty HELM_CDN_DOMAIN")
 				panic(nil)
 			}
-			cleanedArtifacts, err := binary.Clean(destinationRegistry, destinationRegistryType, sourceRegistry, artifactFilterProd, creds, keepDays, helmCdnDomain)
+			binaryCleanPrefix := os.Getenv("BINARY_CLEAN_PREFIX")
+			if binaryCleanPrefix == "" {
+				log.Println("Empty BINARY_CLEAN_PREFIX")
+				panic(nil)
+			}
+			cleanedArtifacts, err := binary.Clean(destinationRegistry, destinationRegistryType, sourceRegistry, artifactFilterProd, creds, keepDays, helmCdnDomain, binaryCleanPrefix)
 			if err != nil {
 				log.Println("Error cleaning binary artifacts from " + destinationRegistry)
 				panic(err)

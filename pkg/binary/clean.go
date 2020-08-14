@@ -3,7 +3,9 @@ package binary
 import (
 	"errors"
 	"log"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/loqutus/artifactory-replication/pkg/artifactory"
@@ -16,7 +18,7 @@ func removeStringFromSlice(slice []string, s int) []string {
 	return append(slice[:s], slice[s+1:]...)
 }
 
-func Clean(destinationRegistry string, destinationRegistryType string, sourceRegistry string, artifactFilterProd string, creds credentials.Creds, keepDays int, helmCdnDomain string) ([]string, error) {
+func Clean(destinationRegistry string, destinationRegistryType string, sourceRegistry string, artifactFilterProd string, creds credentials.Creds, keepDays int, helmCdnDomain string, binaryCleanPrefix string) ([]string, error) {
 	log.Println("Cleaning repo " + destinationRegistry + " from files older than " + strconv.Itoa(keepDays) + " days and not in repo " + sourceRegistry + "/" + artifactFilterProd)
 	var filesToRemove []string
 	if destinationRegistryType != "s3" {
@@ -34,23 +36,39 @@ func Clean(destinationRegistry string, destinationRegistryType string, sourceReg
 		return nil, err
 	}
 	log.Println("got " + string(strconv.Itoa(len(destinationFiles))) + " files with modification date from " + destinationRegistry)
+	var destinationFilesFiltered = make(map[string]*time.Time)
+	for destinationFileName, destinationFileModificationDate := range destinationFiles {
+		if strings.HasPrefix(destinationFileName, binaryCleanPrefix) {
+			destinationFilesFiltered[destinationFileName] = destinationFileModificationDate
+		}
+	}
 	var excludedCounter int
+	// O(n*n+n)
 	for _, sourceFile := range sourceFilesProd {
-		for destinationFile, _ := range destinationFiles {
+		for destinationFile, _ := range destinationFilesFiltered {
 			//log.Println(sourceFile, destinationFile)
 			if sourceFile == destinationFile {
 				excludedCounter++
 				//log.Println("exluding " + sourceFile + " from removal")
-				delete(destinationFiles, destinationFile)
+				delete(destinationFilesFiltered, destinationFile)
 			}
 		}
 	}
 	log.Println("Excluded " + strconv.Itoa(excludedCounter) + " from removal")
-	timeKeep := time.Now().Add(time.Duration(-keepDays) * time.Hour)
-	for fileName, modificationDate := range destinationFiles {
+	timeKeep := time.Now().AddDate(0, 0, -keepDays)
+	for fileName, modificationDate := range destinationFilesFiltered {
 		if modificationDate.Before(timeKeep) {
 			filesToRemove = append(filesToRemove, fileName)
 		}
+	}
+	f, err := os.Create("list.txt")
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+	defer f.Close()
+	for _, fileName := range filesToRemove {
+		f.WriteString(fileName + "\n")
 	}
 	log.Println("removing " + strconv.Itoa(len(filesToRemove)) + " files from " + destinationRegistry)
 	/* removeFailed, err := s3.Delete(destinationRegistry, filesToRemove)

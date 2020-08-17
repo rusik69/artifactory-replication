@@ -71,7 +71,7 @@ func Clean(destinationRegistry string, destinationRegistryType string, sourceReg
 		f.WriteString(fileName + "\n")
 	}
 	log.Println("removing " + strconv.Itoa(len(filesToRemove)) + " files from " + destinationRegistry)
-	/* removeFailed, err := s3.Delete(destinationRegistry, filesToRemove)
+	removeFailed, err := s3.Delete(destinationRegistry, filesToRemove)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ func Clean(destinationRegistry string, destinationRegistryType string, sourceReg
 		for _, file := range removeFailed {
 			log.Println(file)
 		}
-	} */
+	}
 	if len(filesToRemove) > 0 {
 		err := helm.Reindex(filesToRemove, destinationRegistry, sourceFilesProd, helmCdnDomain)
 		if err != nil {

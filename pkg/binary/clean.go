@@ -3,7 +3,6 @@ package binary
 import (
 	"errors"
 	"log"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -61,15 +60,9 @@ func Clean(destinationRegistry string, destinationRegistryType string, sourceReg
 			filesToRemove = append(filesToRemove, fileName)
 		}
 	}
-	f, err := os.Create("list.txt")
-	if err != nil {
-		log.Println(err)
-		return nil, err
-	}
-	defer f.Close()
-	for _, fileName := range filesToRemove {
+	/* for _, fileName := range filesToRemove {
 		f.WriteString(fileName + "\n")
-	}
+	} */
 	log.Println("removing " + strconv.Itoa(len(filesToRemove)) + " files from " + destinationRegistry)
 	removeFailed, err := s3.Delete(destinationRegistry, filesToRemove)
 	if err != nil {
@@ -81,8 +74,12 @@ func Clean(destinationRegistry string, destinationRegistryType string, sourceReg
 			log.Println(file)
 		}
 	}
+	var filesToReindex []string
+	for fileName, _ := range destinationFiles {
+		filesToReindex = append(filesToReindex, fileName)
+	}
 	if len(filesToRemove) > 0 {
-		err := helm.Reindex(filesToRemove, destinationRegistry, sourceFilesProd, helmCdnDomain)
+		err := helm.Reindex(filesToRemove, destinationRegistry, filesToReindex, helmCdnDomain)
 		if err != nil {
 			log.Println("error regenerating index.yaml")
 			panic(err)

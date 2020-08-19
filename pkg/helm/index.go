@@ -24,7 +24,7 @@ func RegenerateIndexYaml(artifactsList []string, artifactsListProd []string, sou
 		}
 	}
 	if len(files) == 0 {
-		log.Println("No index.yamls to regenerate, exiting")
+		log.Println("No helm charts was copied, will not regenerate index.yamls")
 		return nil
 	}
 	for filePrefix, fileRepo := range files {

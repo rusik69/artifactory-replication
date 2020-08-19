@@ -7,7 +7,7 @@ import (
 )
 
 func DownloadAllFiles(bucket string, objectPath string, allFiles []string) (string, error) {
-	log.Println("downloading all files in", objectPath)
+	log.Println("Downloading all files in", objectPath)
 	var allFilesInDir []string
 	for _, file := range allFiles {
 		if strings.HasPrefix(file, objectPath) {

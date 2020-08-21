@@ -2,6 +2,7 @@ package helm
 
 import (
 	"log"
+	"os"
 	"strings"
 
 	"github.com/loqutus/artifactory-replication/pkg/s3"
@@ -23,7 +24,7 @@ func Reindex(filesList []string, registry string, allFiles []string, helmCdnDoma
 		if err != nil {
 			return err
 		}
-		//defer os.RemoveAll(dir)
+		defer os.RemoveAll(dir)
 		indexFile, err := repo.IndexDirectory(dir, helmCdnDomain)
 		if err != nil {
 			return err

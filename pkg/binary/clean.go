@@ -60,9 +60,6 @@ func Clean(destinationRegistry string, destinationRegistryType string, sourceReg
 			filesToRemove = append(filesToRemove, fileName)
 		}
 	}
-	/* for _, fileName := range filesToRemove {
-		f.WriteString(fileName + "\n")
-	} */
 	log.Println("removing " + strconv.Itoa(len(filesToRemove)) + " files from " + destinationRegistry)
 	removeFailed, err := s3.Delete(destinationRegistry, filesToRemove)
 	if err != nil {
